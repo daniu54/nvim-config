@@ -70,9 +70,8 @@ local function lsp_enable()
     ) or vim.uv.cwd()
 
     local python_path = detect_poetry_python(root)
-    if python_path then
-        vim.notify('LSP: using python at ' .. python_path, vim.log.levels.INFO)
-    end
+    local python_display = python_path or vim.fn.exepath('python3') or vim.fn.exepath('python') or 'python (system)'
+    vim.notify('LSP python: ' .. python_display, vim.log.levels.INFO)
 
     vim.lsp.start({
         name    = 'pyright',
