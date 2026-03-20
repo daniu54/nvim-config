@@ -7,6 +7,11 @@ require('mason').setup()
 --
 -- One-time setup: install pyright via :MasonInstall pyright
 -- Then run :LspEnable (or <leader>le) in any Python file.
+--
+-- Venv detection: poetry is Windows-side (poetry.exe) with virtualenvs.in-project = true,
+-- so .venv is always in the project root as a Windows venv (Scripts/python.exe layout).
+-- We use venvPath + venv in pyright settings so pyright scans the folder directly —
+-- no interpreter call needed, works transparently through WSL /mnt/d/ paths.
 
 local function on_attach(_, bufnr)
     local map = function(key, fn, desc)
@@ -41,37 +46,6 @@ local function on_attach(_, bufnr)
     -- gri        → implementation
 end
 
--- Detect the Poetry virtual environment python executable for the given project root.
--- Handles both Linux venvs (bin/python) and Windows venvs in WSL (Scripts/python.exe).
--- Priority: .venv linux → .venv windows → `poetry env info` → nil (system python).
-local function detect_poetry_python(root)
-    -- Option 1: Linux-style venv (.venv/bin/python)
-    local linux_venv = root .. '/.venv/bin/python'
-    if vim.fn.executable(linux_venv) == 1 then
-        return linux_venv
-    end
-
-    -- Option 2: Windows-style venv (.venv/Scripts/python.exe) — project created on Windows side
-    local win_venv = root .. '/.venv/Scripts/python.exe'
-    if vim.fn.executable(win_venv) == 1 then
-        return win_venv
-    end
-
-    -- Option 3: Poetry global venv — ask poetry; convert Windows path (D:\...) to WSL path if needed
-    local result = vim.fn.system('cd ' .. vim.fn.shellescape(root) .. ' && poetry env info --executable 2>/dev/null')
-    result = result:gsub('%s+$', '')
-    if vim.v.shell_error == 0 and result ~= '' then
-        if result:match('^%a:\\') then
-            result = vim.fn.system('wslpath -u ' .. vim.fn.shellescape(result)):gsub('%s+$', '')
-        end
-        if vim.fn.executable(result) == 1 then
-            return result
-        end
-    end
-
-    return nil  -- pyright will use system python
-end
-
 local function lsp_enable()
     -- Prefer Mason-installed binary, fall back to system PATH
     local mason_bin = vim.fn.stdpath('data') .. '/mason/bin/pyright-langserver'
@@ -81,18 +55,21 @@ local function lsp_enable()
         vim.fs.find({ 'pyproject.toml', 'setup.py', 'setup.cfg', '.git' }, { upward = true })[1]
     ) or vim.uv.cwd()
 
-    local python_path = detect_poetry_python(root)
-    local python_display = python_path or vim.fn.exepath('python3') or vim.fn.exepath('python') or 'python (system)'
+    -- Use venvPath + venv so pyright scans .venv/ directly (works for Windows venvs via WSL paths).
+    -- Avoids calling python.exe which returns Windows paths pyright can't follow on Linux.
+    local has_venv = vim.fn.isdirectory(root .. '/.venv') == 1
+    local venv_msg = has_venv and (root .. '/.venv') or 'none (system python)'
 
     vim.lsp.start({
-        name    = 'pyright',
-        cmd     = { cmd, '--stdio' },
+        name     = 'pyright',
+        cmd      = { cmd, '--stdio' },
         root_dir = root,
         capabilities = require('cmp_nvim_lsp').default_capabilities(),
         on_attach = on_attach,
         settings = {
             python = {
-                pythonPath = python_path,  -- nil = pyright picks system python
+                venvPath = has_venv and root or nil,
+                venv     = has_venv and '.venv' or nil,
                 analysis = {
                     typeCheckingMode = 'off',  -- set to 'basic' or 'strict' if you want type errors
                 },
@@ -100,7 +77,7 @@ local function lsp_enable()
         },
     })
 
-    vim.notify('LSP (pyright) started\npython: ' .. python_display, vim.log.levels.INFO)
+    vim.notify('LSP (pyright) started\nvenv: ' .. venv_msg, vim.log.levels.INFO)
 end
 
 vim.api.nvim_create_user_command('LspEnable', lsp_enable, {
