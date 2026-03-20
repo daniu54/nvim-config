@@ -42,19 +42,31 @@ local function on_attach(_, bufnr)
 end
 
 -- Detect the Poetry virtual environment python executable for the given project root.
--- Priority: .venv in project root (in-project mode) → `poetry env info` → nil (system python).
+-- Handles both Linux venvs (bin/python) and Windows venvs in WSL (Scripts/python.exe).
+-- Priority: .venv linux → .venv windows → `poetry env info` → nil (system python).
 local function detect_poetry_python(root)
-    -- Option 1: Poetry in-project venv (.venv/ inside project folder)
-    local inproject = root .. '/.venv/bin/python'
-    if vim.fn.executable(inproject) == 1 then
-        return inproject
+    -- Option 1: Linux-style venv (.venv/bin/python)
+    local linux_venv = root .. '/.venv/bin/python'
+    if vim.fn.executable(linux_venv) == 1 then
+        return linux_venv
     end
 
-    -- Option 2: Poetry global venv — ask poetry where it is
+    -- Option 2: Windows-style venv (.venv/Scripts/python.exe) — project created on Windows side
+    local win_venv = root .. '/.venv/Scripts/python.exe'
+    if vim.fn.executable(win_venv) == 1 then
+        return win_venv
+    end
+
+    -- Option 3: Poetry global venv — ask poetry; convert Windows path (D:\...) to WSL path if needed
     local result = vim.fn.system('cd ' .. vim.fn.shellescape(root) .. ' && poetry env info --executable 2>/dev/null')
-    result = result:gsub('%s+$', '')  -- trim trailing whitespace/newline
-    if vim.v.shell_error == 0 and result ~= '' and vim.fn.executable(result) == 1 then
-        return result
+    result = result:gsub('%s+$', '')
+    if vim.v.shell_error == 0 and result ~= '' then
+        if result:match('^%a:\\') then
+            result = vim.fn.system('wslpath -u ' .. vim.fn.shellescape(result)):gsub('%s+$', '')
+        end
+        if vim.fn.executable(result) == 1 then
+            return result
+        end
     end
 
     return nil  -- pyright will use system python
