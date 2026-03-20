@@ -1,105 +1,89 @@
--- packer
--- This file can be loaded by calling `lua require('plugins')` from your init.vim
+-- lazy.nvim (replaces packer)
+local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
+if not (vim.uv or vim.loop).fs_stat(lazypath) then
+    local out = vim.fn.system({
+        "git", "clone", "--filter=blob:none",
+        "--branch=stable",
+        "https://github.com/folke/lazy.nvim.git",
+        lazypath,
+    })
+    if vim.v.shell_error ~= 0 then
+        vim.api.nvim_echo({
+            { "Failed to clone lazy.nvim:\n", "ErrorMsg" },
+            { out,                            "WarningMsg" },
+        }, true, {})
+        vim.fn.getchar()
+        os.exit(1)
+    end
+end
+vim.opt.rtp:prepend(lazypath)
 
-vim.cmd [[packadd packer.nvim]]
-vim.cmd('colorscheme rose-pine')
+require("lazy").setup({
+    -- colorscheme
+    { 'rose-pine/neovim', name = 'rose-pine' },
 
-return require('packer').startup(function(use)
-  -- Packer can manage itself
-  use 'wbthomason/packer.nvim'
+    -- telescope
+    {
+        'nvim-telescope/telescope.nvim',
+        branch = 'master',
+        dependencies = { 'nvim-lua/plenary.nvim' },
+    },
 
-  use {
-	  'nvim-telescope/telescope.nvim', tag = '0.1.1',
-	  -- or                            , branch = '0.1.x',
-	  requires = { {'nvim-lua/plenary.nvim'} }
-  }
+    -- harpoon2
+    {
+        'ThePrimeagen/harpoon',
+        branch = 'harpoon2',
+        dependencies = { 'nvim-lua/plenary.nvim' },
+    },
 
-  use({ 'rose-pine/neovim', as = 'rose-pine' })
+    -- completion
+    'hrsh7th/nvim-cmp',
 
-  use('nvim-treesitter/nvim-treesitter', {run = ':TSUpdate'})
-  use('nvim-treesitter/playground')
-  use('theprimeagen/harpoon')
-  use('mbbill/undotree')
-  use('tpope/vim-fugitive')
-  use('vim-scripts/Tabmerge')
+    -- comments
+    {
+        'numToStr/Comment.nvim',
+        config = function()
+            require('Comment').setup({
+                mappings = { extra = false },
+            })
+        end,
+    },
 
-  use('nvim-lua/plenary.nvim')
-  use('hrsh7th/nvim-cmp')
+    -- treesitter (syntax highlighting + folding)
+    {
+        'nvim-treesitter/nvim-treesitter',
+        tag = 'v0.9.3',
+        build = ':TSUpdate',
+        config = function()
+            require('nvim-treesitter.configs').setup({
+                ensure_installed = { 'javascript', 'typescript', 'tsx', 'lua', 'markdown', 'markdown_inline' },
+                highlight = { enable = true },
+            })
+        end,
+    },
 
-  use({
-      "jackMort/ChatGPT.nvim",
-      config = function()
-          require("chatgpt").setup({
-              chat = {
-                  -- FIXME keymaps dont seem to work
-                  -- keymaps = {
-                  --     close = { "<Space><Esc>" },
-                  --     yank_last = "<Leader>y",
-                  --     yank_last_code = "<Leader>k",
-                  --     scroll_up = "<C-u>",
-                  --     scroll_down = "<C-d>",
-                  --     new_session = "N",
-                  --     cycle_windows = "<Tab>",
-                  --     cycle_modes = "<C-f>",
-                  --     select_session = "<Space>",
-                  --     rename_session = "r",
-                  --     delete_session = "d",
-                  --     draft_message = "<C-d>",
-                  --     toggle_settings = "<Leader>o",
-                  --     toggle_message_role = "<C-r>",
-                  --     toggle_system_role_open = "<C-s>"
-                  -- }
-              }
-          })
-      end,
-      requires = {
-          "MunifTanjim/nui.nvim",
-          "nvim-lua/plenary.nvim",
-          "nvim-telescope/telescope.nvim"
-      }
-  })
+    -- formatter
+    'stevearc/conform.nvim',
 
-  use {
-      'numToStr/Comment.nvim',
-      config = function()
-		  require('Comment').setup({
-              mappings = {
-                  extra = false
-              }
-          })
-	  end
-  }
+    -- neater keymaps
+    'b0o/mapx.nvim',
 
-  -- neater keymaps
-  use('b0o/mapx.nvim')
-
-  -- lsp
-  use {
-	  'VonHeikemen/lsp-zero.nvim',
-	  branch = 'v1.x',
-	  requires = {
-		  -- LSP Support
-		  {'neovim/nvim-lspconfig'},             -- Required
-		  {                                      -- Optional
-		  'williamboman/mason.nvim',
-		  run = function()
-			  pcall(vim.cmd, 'MasonUpdate')
-		  end,
-	  },
-	  {'williamboman/mason-lspconfig.nvim'}, -- Optional
-
-	  -- Autocompletion
-	  {'hrsh7th/nvim-cmp'},         -- Required
-	  {'hrsh7th/cmp-nvim-lsp'},     -- Required
-	  {'hrsh7th/cmp-buffer'},       -- Optional
-	  {'hrsh7th/cmp-path'},         -- Optional
-	  {'saadparwaiz1/cmp_luasnip'}, -- Optional
-	  {'hrsh7th/cmp-nvim-lua'},     -- Optional
-
-	  -- Snippets
-	  {'L3MON4D3/LuaSnip'},             -- Required
-	  {'rafamadriz/friendly-snippets'}, -- Optional
-  }
-}
-end)
-
+    -- lsp
+    {
+        'VonHeikemen/lsp-zero.nvim',
+        branch = 'v1.x',
+        dependencies = {
+            'neovim/nvim-lspconfig',
+            { 'williamboman/mason.nvim', build = ':MasonUpdate' },
+            'williamboman/mason-lspconfig.nvim',
+            'hrsh7th/nvim-cmp',
+            'hrsh7th/cmp-nvim-lsp',
+            'hrsh7th/cmp-buffer',
+            'hrsh7th/cmp-path',
+            'saadparwaiz1/cmp_luasnip',
+            'hrsh7th/cmp-nvim-lua',
+            'L3MON4D3/LuaSnip',
+            'rafamadriz/friendly-snippets',
+        },
+    },
+})
