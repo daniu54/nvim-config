@@ -14,16 +14,27 @@ local function on_attach(_, bufnr)
     end
 
     -- go to definition (not a nvim default)
-    map('gd', vim.lsp.buf.definition,      'LSP: go to definition')
+    map('gd', vim.lsp.buf.definition, 'LSP: go to definition')
 
     -- diagnostics
     map(']d', function() vim.diagnostic.jump({ count = 1 }) end,  'LSP: next diagnostic')
     map('[d', function() vim.diagnostic.jump({ count = -1 }) end, 'LSP: prev diagnostic')
-    map('<leader>ld', vim.diagnostic.open_float, 'LSP: show diagnostic popup')
-    map('<leader>lq', vim.diagnostic.setloclist, 'LSP: diagnostic list')
+
+    -- K: show diagnostic popup if there's a warning/error on this line, otherwise hover docs
+    map('K', function()
+        local lnum = vim.fn.line('.') - 1  -- 0-indexed
+        local diags = vim.diagnostic.get(vim.api.nvim_get_current_buf(), { lnum = lnum })
+        if #diags > 0 then
+            vim.diagnostic.open_float()
+        else
+            vim.lsp.buf.hover()
+        end
+    end, 'LSP: diagnostic popup or hover docs')
+
+    -- <leader>K: all diagnostics in location list
+    map('<leader>K', vim.diagnostic.setloclist, 'LSP: all diagnostics list')
 
     -- nvim 0.11 sets these by default, listed here for reference:
-    -- K          → hover docs
     -- grn        → rename symbol
     -- gra        → code action
     -- grr        → references
