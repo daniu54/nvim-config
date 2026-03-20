@@ -5,7 +5,7 @@ vim.g.maplocalleader = ' '
 vim.api.nvim_set_keymap('t', '<leader><Esc>', '<C-\\><C-n>', { noremap = true }) 
 
 -- open project view
-vim.keymap.set("n", "<leader>pv", vim.cmd.Ex)
+vim.keymap.set("n", "<leader>pv", function() vim.cmd("Ex") end)
 
 -- move selection up and down while preserving indentation
 vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv")
@@ -40,6 +40,93 @@ vim.keymap.set({"n", "v"}, "<leader>P", [["+p]])
 
 -- quick search-replace word under cursor
 vim.keymap.set("n", "<leader>s", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gI<Left><Left><Left>]])
+
+-- netrw: copy path of file under cursor to Windows clipboard
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "netrw",
+  callback = function()
+    vim.keymap.set("n", "yp", function()
+      local path = vim.fn.expand("<cfile>:p")
+      vim.fn.system("clip.exe", path)
+      vim.notify("Copied: " .. path)
+    end, { buffer = true })
+  end,
+})
+
+-- open URL under cursor in Firefox (WSL → Windows via PowerShell)
+vim.keymap.set("n", "gx", function()
+  local line = vim.fn.getline(".")
+  local col = vim.fn.col(".") - 1  -- 0-indexed
+  local url_pat = "https?://[%w%.%-%_~:/?#%[%]@!$&'%(%)%*%+,;=%%]+"
+  local s = 1
+  while true do
+    local ms, me = line:find(url_pat, s)
+    if not ms then break end
+    if ms - 1 <= col and col <= me - 1 then
+      vim.fn.jobstart({ vim.fn.expand("~/bin/open-url"), line:sub(ms, me) })
+      return
+    end
+    s = me + 1
+  end
+  vim.notify("No URL under cursor", vim.log.levels.WARN)
+end, { desc = "Open URL under cursor" })
+
+-- open path under cursor in a new nvim window (WSL → Windows Terminal)
+vim.keymap.set("n", "<leader>gf", function()
+  local line = vim.fn.getline(".")
+  local col = vim.fn.col(".") - 1  -- 0-indexed
+
+  -- Find path-like token at cursor position (stops at parens, quotes, spaces)
+  local path_pat = "[%w_%.%/%-][%w_%.%/%-]*"
+  local s = 1
+  local token = nil
+  while true do
+    local ms, me = line:find(path_pat, s)
+    if not ms then break end
+    if ms - 1 <= col and col <= me - 1 then
+      token = line:sub(ms, me)
+      break
+    end
+    s = me + 1
+  end
+
+  if not token then
+    vim.notify("No path under cursor", vim.log.levels.WARN)
+    return
+  end
+
+  -- Strip trailing :line_number and punctuation
+  token = token:gsub(":%d+.*$", ""):gsub("[%.%,%;]+$", "")
+
+  local function exists(p) return vim.fn.filereadable(p) == 1 or vim.fn.isdirectory(p) == 1 end
+
+  local function open_resolved(resolved)
+    local dir = vim.fn.fnamemodify(resolved, ":h")
+    local win_dir = vim.fn.system("wslpath -w " .. vim.fn.shellescape(dir)):gsub("\n$", "")
+    vim.fn.jobstart({ "wt.exe", "-d", win_dir, "wsl.exe", "nvim", resolved })
+  end
+
+  local resolved = nil
+
+  if token:sub(1, 2) == "./" or token:sub(1, 1) ~= "/" then
+    -- relative: try cwd/token (stripping leading ./ if present)
+    local clean = token:gsub("^%./", "")
+    local candidate = vim.fn.getcwd() .. "/" .. clean
+    if exists(candidate) then resolved = vim.fn.fnamemodify(candidate, ":p") end
+  end
+
+  if not resolved and token:sub(1, 1) == "/" then
+    -- absolute
+    if exists(token) then resolved = token end
+  end
+
+  if not resolved then
+    vim.notify("Path not found: " .. token, vim.log.levels.WARN)
+    return
+  end
+
+  open_resolved(resolved)
+end, { desc = "Open path under cursor in new window" })
 
 -- navigate back and forwards
 vim.keymap.set({"n"}, "H", ":bp<CR>", { desc = "Move to previous buffer" })
