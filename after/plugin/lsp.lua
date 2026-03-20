@@ -1,3 +1,6 @@
+-- Initialize Mason so :Mason and :MasonInstall commands are available
+require('mason').setup()
+
 -- Python LSP (pyright) is NOT started automatically.
 -- This keeps file-open times fast. Enable it on demand when you need
 -- language-aware completions, go-to-definition, etc.
