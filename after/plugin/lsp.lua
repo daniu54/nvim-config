@@ -55,10 +55,25 @@ local function lsp_enable()
         vim.fs.find({ 'pyproject.toml', 'setup.py', 'setup.cfg', '.git' }, { upward = true })[1]
     ) or vim.uv.cwd()
 
-    -- Use venvPath + venv so pyright scans .venv/ directly (works for Windows venvs via WSL paths).
-    -- Avoids calling python.exe which returns Windows paths pyright can't follow on Linux.
-    local has_venv = vim.fn.isdirectory(root .. '/.venv') == 1
-    local venv_msg = has_venv and (root .. '/.venv') or 'none (system python)'
+    -- Find site-packages directly inside .venv, handling both layouts:
+    --   Windows venv (poetry.exe): .venv/Lib/site-packages
+    --   Linux venv  (poetry):      .venv/lib/pythonX.Y/site-packages
+    -- Using extraPaths bypasses pyvenv.cfg entirely (which contains Windows paths
+    -- that pyright can't follow when running on Linux).
+    local extra_paths = {}
+    local venv_msg = 'none (system python)'
+
+    local win_packages = root .. '/.venv/Lib/site-packages'
+    if vim.fn.isdirectory(win_packages) == 1 then
+        extra_paths = { win_packages }
+        venv_msg = win_packages
+    else
+        local matches = vim.fn.glob(root .. '/.venv/lib/python*/site-packages', false, true)
+        if #matches > 0 then
+            extra_paths = { matches[1] }
+            venv_msg = matches[1]
+        end
+    end
 
     vim.lsp.start({
         name     = 'pyright',
@@ -68,16 +83,15 @@ local function lsp_enable()
         on_attach = on_attach,
         settings = {
             python = {
-                venvPath = has_venv and root or nil,
-                venv     = has_venv and '.venv' or nil,
                 analysis = {
                     typeCheckingMode = 'off',  -- set to 'basic' or 'strict' if you want type errors
+                    extraPaths = extra_paths,
                 },
             },
         },
     })
 
-    vim.notify('LSP (pyright) started\nvenv: ' .. venv_msg, vim.log.levels.INFO)
+    vim.notify('LSP (pyright) started\npackages: ' .. venv_msg, vim.log.levels.INFO)
 end
 
 vim.api.nvim_create_user_command('LspEnable', lsp_enable, {
