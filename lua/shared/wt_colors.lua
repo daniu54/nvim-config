@@ -3,7 +3,13 @@
 -- controlling terminal (= the outer Windows Terminal pane). Complements the
 -- zsh precmd hook in ~/.zshrc for shell prompts and nvim :terminal buffers.
 
-local DEFAULT_BG = "#262A30"  -- matches "Color Scheme 10" background
+-- ── color config ─────────────────────────────────────────────────────────────
+local COLORS = {
+  default  = "#262A30",  -- matches "Color Scheme 10" background
+  backend  = "#0D1F0D",  -- calm green
+  frontend = "#0A1020",  -- calm blue
+}
+-- ─────────────────────────────────────────────────────────────────────────────
 
 local function write_osc(seq)
   local tty = io.open("/dev/tty", "w")
@@ -25,11 +31,11 @@ local function update()
   -- background color
   local bg
   if cwd:find("backend", 1, true) then
-    bg = "#2B1A09"                        -- calm orange
+    bg = COLORS.backend
   elseif cwd:find("frontend", 1, true) or cwd:find("ui", 1, true) then
-    bg = "#091828"                        -- calm blue
+    bg = COLORS.frontend
   else
-    bg = DEFAULT_BG
+    bg = COLORS.default
   end
   write_osc("\027]11;" .. bg .. "\007")
 
@@ -45,6 +51,6 @@ vim.api.nvim_create_autocmd({ "DirChanged", "VimEnter" }, {
 
 vim.api.nvim_create_autocmd("VimLeave", {
   callback = function()
-    write_osc("\027]11;" .. DEFAULT_BG .. "\007")
+    write_osc("\027]11;" .. COLORS.default .. "\007")
   end,
 })
