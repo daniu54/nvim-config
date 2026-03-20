@@ -6,8 +6,8 @@
 -- ── color config ─────────────────────────────────────────────────────────────
 local COLORS = {
   default  = "#262A30",  -- matches "Color Scheme 10" background
-  backend  = "#0D1F0D",  -- calm green
-  frontend = "#0A1020",  -- calm blue
+  backend  = "#252E28",  -- soft green tint
+  frontend = "#23293A",  -- soft blue tint
 }
 -- ─────────────────────────────────────────────────────────────────────────────
 
