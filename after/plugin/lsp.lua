@@ -41,6 +41,25 @@ local function on_attach(_, bufnr)
     -- gri        → implementation
 end
 
+-- Detect the Poetry virtual environment python executable for the given project root.
+-- Priority: .venv in project root (in-project mode) → `poetry env info` → nil (system python).
+local function detect_poetry_python(root)
+    -- Option 1: Poetry in-project venv (.venv/ inside project folder)
+    local inproject = root .. '/.venv/bin/python'
+    if vim.fn.executable(inproject) == 1 then
+        return inproject
+    end
+
+    -- Option 2: Poetry global venv — ask poetry where it is
+    local result = vim.fn.system('cd ' .. vim.fn.shellescape(root) .. ' && poetry env info --executable 2>/dev/null')
+    result = result:gsub('%s+$', '')  -- trim trailing whitespace/newline
+    if vim.v.shell_error == 0 and result ~= '' and vim.fn.executable(result) == 1 then
+        return result
+    end
+
+    return nil  -- pyright will use system python
+end
+
 local function lsp_enable()
     -- Prefer Mason-installed binary, fall back to system PATH
     local mason_bin = vim.fn.stdpath('data') .. '/mason/bin/pyright-langserver'
@@ -50,6 +69,11 @@ local function lsp_enable()
         vim.fs.find({ 'pyproject.toml', 'setup.py', 'setup.cfg', '.git' }, { upward = true })[1]
     ) or vim.uv.cwd()
 
+    local python_path = detect_poetry_python(root)
+    if python_path then
+        vim.notify('LSP: using python at ' .. python_path, vim.log.levels.INFO)
+    end
+
     vim.lsp.start({
         name    = 'pyright',
         cmd     = { cmd, '--stdio' },
@@ -58,6 +82,7 @@ local function lsp_enable()
         on_attach = on_attach,
         settings = {
             python = {
+                pythonPath = python_path,  -- nil = pyright picks system python
                 analysis = {
                     typeCheckingMode = 'off',  -- set to 'basic' or 'strict' if you want type errors
                 },
