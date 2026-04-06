@@ -93,17 +93,50 @@ local function open_term_vsplit()
   vim.cmd('startinsert')
 end
 
+-- Find the PID of an nvim process that is a direct child of the given shell pid.
+local function find_inner_nvim_pid(shell_pid)
+  local children = vim.fn.system('pgrep -P ' .. shell_pid)
+  for child_pid in children:gmatch('%d+') do
+    local cmdline = vim.fn.system('cat /proc/' .. child_pid .. '/cmdline 2>/dev/null')
+    if cmdline:match('nvim') then return tonumber(child_pid) end
+  end
+  return nil
+end
+
+-- Find the nvim server socket for a given nvim PID by reading $NVIM from one
+-- of its child processes (which nvim sets for every process it spawns).
+local function find_nvim_socket(nvim_pid)
+  local children = vim.fn.system('pgrep -P ' .. nvim_pid)
+  for gc_pid in children:gmatch('%d+') do
+    local environ = vim.fn.system('cat /proc/' .. gc_pid .. '/environ 2>/dev/null')
+    local socket = environ:match('NVIM=([^\0]+)') or environ:match('NVIM_LISTEN_ADDRESS=([^\0]+)')
+    if socket and socket ~= '' then return socket end
+  end
+  return nil
+end
+
 -- Returns true if the terminal buffer's shell has a child process running nvim.
 -- Used to pass <C-t> through to an inner nvim instead of intercepting it.
 local function terminal_child_is_nvim()
   local pid = vim.b.terminal_job_pid
   if not pid then return false end
-  local children = vim.fn.system('pgrep -P ' .. pid)
-  for child_pid in children:gmatch('%d+') do
-    local cmdline = vim.fn.system('cat /proc/' .. child_pid .. '/cmdline 2>/dev/null')
-    if cmdline:match('nvim') then return true end
-  end
-  return false
+  return find_inner_nvim_pid(pid) ~= nil
+end
+
+-- Returns true if inner nvim's currently focused window is a terminal buffer.
+-- Used to decide whether to pass <leader><Esc> through to inner nvim.
+local function inner_nvim_terminal_is_active()
+  local pid = vim.b.terminal_job_pid
+  if not pid then return false end
+  local nvim_pid = find_inner_nvim_pid(pid)
+  if not nvim_pid then return false end
+  local socket = find_nvim_socket(nvim_pid)
+  if not socket then return false end
+  local result = vim.fn.system(
+    'nvim --server ' .. vim.fn.shellescape(socket) ..
+    " --remote-expr \"getbufvar(winbufnr(winnr()), '&buftype')\" 2>/dev/null"
+  )
+  return result:gsub('%s+', '') == 'terminal'
 end
 
 vim.keymap.set('n', '<C-t>', open_term_vsplit, { desc = 'Open terminal in vsplit at context dir' })
@@ -117,3 +150,14 @@ vim.keymap.set('t', '<C-t>', function()
     vim.schedule(open_term_vsplit)
   end
 end, { desc = 'Open terminal in vsplit, or pass C-t through to inner nvim' })
+
+-- <leader><Esc>: exit terminal mode — but if inner nvim's active window is a
+-- terminal buffer, pass the keysequence through so inner nvim handles it instead.
+vim.keymap.set('t', '<leader><Esc>', function()
+  if inner_nvim_terminal_is_active() then
+    -- space (leader=0x20) + Esc (0x1b)
+    vim.api.nvim_chan_send(vim.b.terminal_job_id, ' \x1b')
+  else
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-\\><C-n>', true, false, true), 'n', false)
+  end
+end, { desc = 'Exit terminal mode, or pass <leader><Esc> through to inner nvim terminal' })
