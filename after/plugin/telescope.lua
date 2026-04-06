@@ -109,7 +109,7 @@ local function find_nvim_socket(nvim_pid)
   local children = vim.fn.system('pgrep -P ' .. nvim_pid)
   for gc_pid in children:gmatch('%d+') do
     local environ = vim.fn.system('cat /proc/' .. gc_pid .. '/environ 2>/dev/null')
-    local socket = environ:match('NVIM=([^\0]+)') or environ:match('NVIM_LISTEN_ADDRESS=([^\0]+)')
+    local socket = environ:match('NVIM=([^%z]+)') or environ:match('NVIM_LISTEN_ADDRESS=([^%z]+)')
     if socket and socket ~= '' then return socket end
   end
   return nil
