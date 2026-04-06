@@ -1,6 +1,6 @@
 vim.api.nvim_command('set clipboard=unnamedplus')
 
-vim.api.nvim_set_var('netrw_bufsettings', 'noma nomod nu nobl nowrap ro')
+vim.api.nvim_set_var('netrw_bufsettings', 'noma nomod nu nowrap ro')
 
 vim.api.nvim_create_autocmd("TermOpen", {
   pattern = "*",

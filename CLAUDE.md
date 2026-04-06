@@ -2,6 +2,13 @@
 
 Instructions and context for Claude Code when working in this repository.
 
+## obsidian documentation
+
+When the user asks to document keybindings or config changes in Obsidian, write to:
+
+- **Folder:** `D:\obsidian_notes\default_vault\default\nvim\` (Windows path — use `wslpath` if needed: `/mnt/d/obsidian_notes/default_vault/default/nvim/`)
+- **File:** `nvim.md`
+
 ## plugin manager
 
 **lazy.nvim** — migrated from packer.nvim.
