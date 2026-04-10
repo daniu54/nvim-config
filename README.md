@@ -58,7 +58,7 @@ Defined in `lua/shared/remap.lua`:
 | `<leader>s`               | search-replace word under cursor               |
 | `<leader>Y` / `<leader>P` | yank/paste to/from system clipboard            |
 | `<BS>` / `<leader><BS>`   | fast scroll down/up (`<C-d>` / `<C-u>`)        |
-| `<leader><Esc>`           | exit terminal mode                             |
+| `<C-Esc>`              | exit terminal mode                             |
 
 ## folding
 
