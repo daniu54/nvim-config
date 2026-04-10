@@ -38,15 +38,27 @@ vim.keymap.set({"n", "v"}, "<leader>P", [["+p]])
 -- quick search-replace word under cursor
 vim.keymap.set("n", "<leader>s", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gI<Left><Left><Left>]])
 
--- netrw: copy path of file under cursor to Windows clipboard
+-- netrw keymaps
 vim.api.nvim_create_autocmd("FileType", {
   pattern = "netrw",
   callback = function()
+    -- yp: copy full path of file under cursor to Windows clipboard
     vim.keymap.set("n", "yp", function()
       local path = vim.fn.expand("<cfile>:p")
       vim.fn.system("clip.exe", path)
       vim.notify("Copied: " .. path)
     end, { buffer = true })
+
+    -- !: run a shell command on the file under cursor.
+    -- % in the command is replaced with the full path of the cursor file.
+    -- Example: `cat %`  →  :!cat '/path/to/file'
+    vim.keymap.set("n", "!", function()
+      local file = vim.fn.expand("<cfile>:p")
+      local cmd = vim.fn.input(":! ", "", "shellcmd")
+      if cmd == "" then return end
+      local expanded = cmd:gsub("%%", vim.fn.shellescape(file))
+      vim.cmd("!" .. expanded)
+    end, { buffer = true, desc = "Run shell command; % = file under cursor" })
   end,
 })
 
