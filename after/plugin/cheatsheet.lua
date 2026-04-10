@@ -48,7 +48,7 @@ local lines = {
   "   gri              implementation  (nvim 0.11 default)      ",
   " ─────────────────────────────────────────────────────────── ",
   "  TERMINAL                                                   ",
-  "   <C-Esc>          exit terminal mode                       ",
+  "   <C-;>            exit terminal mode                       ",
   " ─────────────────────────────────────────────────────────── ",
   "  FINDING MORE                                               ",
   "   :help index       full list of built-in normal bindings   ",
