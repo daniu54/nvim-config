@@ -124,7 +124,7 @@ local function terminal_child_is_nvim()
 end
 
 -- Returns true if inner nvim's currently focused window is a terminal buffer.
--- Used to decide whether to pass <C-;> through to inner nvim.
+-- Used to decide whether to pass <M-e> through to inner nvim.
 local function inner_nvim_terminal_is_active()
   local pid = vim.b.terminal_job_pid
   if not pid then return false end
@@ -145,15 +145,14 @@ vim.keymap.set('t', '<C-t>', function()
   vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x14')
 end, { desc = 'Pass C-t through to shell/inner nvim' })
 
--- <C-;>: exit terminal mode — but if inner nvim's active window is a
+-- <M-e>: exit terminal mode — but if inner nvim's active window is a
 -- terminal buffer, send <C-\><C-n> through so inner nvim exits its terminal mode too.
--- Requires kitty keyboard protocol (Windows Terminal + nvim 0.10+) to send C-; as a
--- distinct chord rather than a bare semicolon.
-vim.keymap.set('t', '<C-;>', function()
+-- Alt+letter works without kitty keyboard protocol (sends ESC+e, always distinguishable).
+vim.keymap.set('t', '<M-e>', function()
   if inner_nvim_terminal_is_active() then
     -- <C-\><C-n> is nvim's built-in terminal escape (0x1c 0x0e)
     vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x1c\x0e')
   else
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-\\><C-n>', true, false, true), 'n', false)
   end
-end, { desc = 'Exit terminal mode, or pass C-; through to inner nvim terminal' })
+end, { desc = 'Exit terminal mode, or pass M-e through to inner nvim terminal' })
