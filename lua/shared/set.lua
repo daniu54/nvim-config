@@ -1,6 +1,7 @@
 vim.api.nvim_command('set clipboard=unnamedplus')
 
 vim.api.nvim_set_var('netrw_bufsettings', 'noma nomod nu nowrap ro')
+vim.g.netrw_liststyle = 3  -- tree view by default
 
 vim.api.nvim_create_autocmd("TermOpen", {
   pattern = "*",
@@ -37,6 +38,8 @@ vim.opt.undofile = true
 
 vim.opt.hlsearch = true -- hightlight search results
 vim.opt.incsearch = true
+vim.opt.ignorecase = true  -- case insensitive by default
+vim.opt.smartcase = true   -- case sensitive if search contains uppercase
 
 vim.opt.termguicolors = true
 

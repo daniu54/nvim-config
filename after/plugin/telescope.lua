@@ -141,15 +141,9 @@ end
 
 vim.keymap.set('n', '<C-t>', open_term_vsplit, { desc = 'Open terminal in vsplit at context dir' })
 vim.keymap.set('t', '<C-t>', function()
-  if terminal_child_is_nvim() then
-    -- pass raw C-t byte to the terminal so inner nvim receives it
-    vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x14')
-  else
-    -- exit terminal mode, then open the split
-    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-\\><C-n>', true, false, true), 'n', false)
-    vim.schedule(open_term_vsplit)
-  end
-end, { desc = 'Open terminal in vsplit, or pass C-t through to inner nvim' })
+  -- always pass C-t through to the shell (or inner nvim if running)
+  vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x14')
+end, { desc = 'Pass C-t through to shell/inner nvim' })
 
 -- <leader><Esc>: exit terminal mode — but if inner nvim's active window is a
 -- terminal buffer, pass the keysequence through so inner nvim handles it instead.

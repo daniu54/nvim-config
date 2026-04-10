@@ -128,3 +128,29 @@ end, { desc = "Open path under cursor in new window" })
 -- navigate back and forwards
 vim.keymap.set({"n"}, "H", ":bp<CR>", { desc = "Move to previous buffer" })
 vim.keymap.set({"n"}, "L", ":bn<CR>", { desc = "Move to next buffer" })
+
+-- Smart search: letters/digits only → literal (\V), else regex.
+-- Case is handled by ignorecase+smartcase in set.lua.
+-- If the user manually prefixes \v/\V/\c/\C, we leave it alone.
+do
+  local _last_search = ''
+  vim.api.nvim_create_autocmd('CmdlineChanged', {
+    pattern = { '/', '?' },
+    callback = function() _last_search = vim.fn.getcmdline() end,
+  })
+  vim.api.nvim_create_autocmd('CmdlineLeave', {
+    pattern = { '/', '?' },
+    callback = function()
+      local term = _last_search
+      _last_search = ''
+      if term == '' then return end
+      if term:match('^\\[vVcC]') then return end  -- user set mode explicitly
+      if not term:match('[^a-zA-Z0-9]') then
+        -- letters/digits only: force literal, explicit case flag (smartcase won't apply to setreg)
+        local case_flag = term:match('[A-Z]') and '\\C' or '\\c'
+        vim.fn.setreg('/', case_flag .. '\\V' .. term)
+      end
+      -- else: regex search — ignorecase+smartcase already applied by nvim
+    end,
+  })
+end
