@@ -258,6 +258,7 @@ vim.keymap.set({ 'n', 't' }, '<C-p>', function()
         if entry then
           vim.api.nvim_chan_send(job_id, table.concat(entry.contents, '\n'))
         end
+        vim.cmd('startinsert')
       end
       map('i', '<CR>', send_to_terminal)
       map('n', '<CR>', send_to_terminal)
