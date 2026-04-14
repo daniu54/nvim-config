@@ -233,10 +233,37 @@ vim.keymap.set('t', '<C-e>', function()
 end, { desc = 'Exit terminal mode, or pass C-e through to inner nvim terminal' })
 
 -- <C-p>: yank history picker (overrides nvim default <C-p> = move up / prev completion)
-vim.keymap.set('n', '<C-p>', function()
-  require('telescope').extensions.neoclip.default()
-end, { desc = 'Yank history picker' })
+-- In terminal mode:
+--   - if inner nvim is running, forward <C-p> to it
+--   - otherwise open picker with a custom <CR> that sends the selected text
+--     to the terminal via chan_send (not a buffer paste, which would insert
+--     raw characters into the terminal buffer rather than the shell's stdin)
+vim.keymap.set({ 'n', 't' }, '<C-p>', function()
+  local is_terminal = vim.bo.buftype == 'terminal'
+  local job_id = is_terminal and vim.b.terminal_job_id or nil
 
-vim.keymap.set('t', '<C-p>', function()
-  require('telescope').extensions.neoclip.default()
-end, { desc = 'Yank history picker (from terminal)' })
+  if is_terminal and terminal_child_is_nvim() then
+    vim.api.nvim_chan_send(job_id, '\x10')   -- forward raw Ctrl-P to inner nvim
+    return
+  end
+
+  local opts = {}
+  if is_terminal and job_id then
+    opts.attach_mappings = function(_, map)
+      local actions = require('telescope.actions')
+      local state   = require('telescope.actions.state')
+      local function send_to_terminal(bufnr)
+        local entry = state.get_selected_entry()
+        actions.close(bufnr)
+        if entry then
+          vim.api.nvim_chan_send(job_id, table.concat(entry.contents, '\n'))
+        end
+      end
+      map('i', '<CR>', send_to_terminal)
+      map('n', '<CR>', send_to_terminal)
+      return true   -- keep all other default neoclip mappings
+    end
+  end
+
+  require('telescope').extensions.neoclip.default(opts)
+end, { desc = 'Yank history picker (terminal: sends to stdin via chan_send)' })
