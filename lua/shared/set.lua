@@ -11,6 +11,15 @@ vim.api.nvim_create_autocmd("TermOpen", {
   end,
 })
 
+-- Re-enter terminal mode when nvim regains focus while a terminal buffer is active
+vim.api.nvim_create_autocmd("FocusGained", {
+  callback = function()
+    if vim.bo.buftype == "terminal" then
+      vim.cmd("startinsert")
+    end
+  end,
+})
+
 if vim.loop.os_uname().sysname == "Windows" then
 	vim.api.nvim_exec('language en_US', true)
 end
