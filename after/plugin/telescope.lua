@@ -238,9 +238,5 @@ vim.keymap.set('n', '<C-p>', function()
 end, { desc = 'Yank history picker' })
 
 vim.keymap.set('t', '<C-p>', function()
-  -- exit terminal mode first, then open picker
-  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-\\><C-n>', true, false, true), 'n', false)
-  vim.schedule(function()
-    require('telescope').extensions.neoclip.default()
-  end)
+  require('telescope').extensions.neoclip.default()
 end, { desc = 'Yank history picker (from terminal)' })
