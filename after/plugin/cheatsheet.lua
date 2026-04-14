@@ -48,6 +48,8 @@ local lines = {
   "   gri              implementation  (nvim 0.11 default)      ",
   " ─────────────────────────────────────────────────────────── ",
   "  TERMINAL                                                   ",
+  "   <C-t>            open terminal in vertical split (right)  ",
+  "   <C-s>            open terminal in horizontal split (below)",
   "   <C-e>            exit terminal mode                       ",
   " ─────────────────────────────────────────────────────────── ",
   "  FINDING MORE                                               ",

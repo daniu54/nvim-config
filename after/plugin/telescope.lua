@@ -66,16 +66,64 @@ local function ctx_cwd()
   return vim.fn.expand('%:p:h')
 end
 
+-- Walk up from `dir` toward the filesystem root, stopping at the first
+-- directory that contains a project-root marker (.git, go.mod, etc.).
+-- Goes at most `max_up` levels; returns the original `dir` if nothing is found.
+local project_markers = { '.git', 'go.mod', 'package.json', 'pyproject.toml', 'Cargo.toml' }
+local function find_project_root(dir, max_up)
+  local d = dir
+  for _ = 1, (max_up or 3) do
+    for _, marker in ipairs(project_markers) do
+      if vim.fn.isdirectory(d .. '/' .. marker) == 1
+        or vim.fn.filereadable(d .. '/' .. marker) == 1 then
+        return d
+      end
+    end
+    local parent = vim.fn.fnamemodify(d, ':h')
+    if parent == d then break end   -- reached filesystem root
+    d = parent
+  end
+  return dir
+end
+
+local function search_cwd()
+  return find_project_root(ctx_cwd())
+end
+
+-- Returns the current visual selection as a single line of text.
+-- Saves and restores register z to avoid clobbering the user's registers.
+local function get_visual_selection()
+  local saved_reg = vim.fn.getreg('z')
+  local saved_regtype = vim.fn.getregtype('z')
+  vim.cmd('normal! "zy')
+  local text = vim.fn.getreg('z')
+  vim.fn.setreg('z', saved_reg, saved_regtype)
+  -- Telescope default_text is single-line; strip everything after the first newline
+  return (text:gsub('\n.*', ''))
+end
+
 -- <C-o>: find files — mirrors VSCode ctrl+o (quickOpen → file picker)
 -- NOTE: overrides nvim's built-in <C-o> (jumplist back)
 vim.keymap.set('n', '<C-o>', function()
-  builtin.find_files({ cwd = ctx_cwd() })
+  builtin.find_files({ cwd = search_cwd() })
 end, { desc = 'Telescope: find files' })
+
+-- Visual <C-o>: find files with selection pre-filled
+vim.keymap.set('v', '<C-o>', function()
+  local text = get_visual_selection()
+  builtin.find_files({ cwd = search_cwd(), default_text = text })
+end, { desc = 'Telescope: find files (selection)' })
 
 -- <leader>fg: live grep
 vim.keymap.set('n', '<leader>fg', function()
-  builtin.live_grep({ cwd = ctx_cwd() })
+  builtin.live_grep({ cwd = search_cwd() })
 end, { desc = 'Telescope: live grep' })
+
+-- Visual <leader>fg: live grep with selection pre-filled
+vim.keymap.set('v', '<leader>fg', function()
+  local text = get_visual_selection()
+  builtin.live_grep({ cwd = search_cwd(), default_text = text })
+end, { desc = 'Telescope: live grep (selection)' })
 
 -- <leader>fo: recent files — mirrors VSCode ctrl+shift+o (openRecent)
 vim.keymap.set('n', '<leader>fo', builtin.oldfiles, { desc = 'Telescope: recent files' })
@@ -144,6 +192,21 @@ vim.keymap.set('t', '<C-t>', function()
   -- always pass C-t through to the shell (or inner nvim if running)
   vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x14')
 end, { desc = 'Pass C-t through to shell/inner nvim' })
+
+-- <C-s>: open terminal in a horizontal split below at context directory
+local function open_term_split()
+  local dir = ctx_cwd()
+  vim.cmd('rightbelow split')
+  vim.cmd('lcd ' .. vim.fn.fnameescape(dir))
+  vim.cmd('terminal')
+  vim.cmd('startinsert')
+end
+
+vim.keymap.set('n', '<C-s>', open_term_split, { desc = 'Open terminal in hsplit below at context dir' })
+vim.keymap.set('t', '<C-s>', function()
+  -- pass C-s through to the shell (sends XOFF; unfreeze with C-q)
+  vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x13')
+end, { desc = 'Pass C-s through to shell/inner nvim' })
 
 -- Exit terminal mode (and pass the escape through to inner nvim if it's running a terminal).
 --

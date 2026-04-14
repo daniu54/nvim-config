@@ -137,6 +137,16 @@ vim.keymap.set("n", "<leader>gf", function()
   open_resolved(resolved)
 end, { desc = "Open path under cursor in new window" })
 
+-- !: run a shell command; % is replaced with the current file's full path.
+-- Mirrors the netrw "!" mapping for regular file buffers.
+vim.keymap.set("n", "!", function()
+  local file = vim.fn.expand("%:p")
+  local cmd = vim.fn.input(":! ", "", "shellcmd")
+  if cmd == "" then return end
+  local expanded = cmd:gsub("%%", vim.fn.shellescape(file))
+  vim.cmd("!" .. expanded)
+end, { desc = "Run shell command; % = current file" })
+
 -- navigate back and forwards
 vim.keymap.set({"n"}, "H", ":bp<CR>", { desc = "Move to previous buffer" })
 vim.keymap.set({"n"}, "L", ":bn<CR>", { desc = "Move to next buffer" })
