@@ -231,3 +231,16 @@ vim.keymap.set('t', '<C-e>', function()
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-\\><C-n>', true, false, true), 'n', false)
   end
 end, { desc = 'Exit terminal mode, or pass C-e through to inner nvim terminal' })
+
+-- <C-p>: yank history picker (overrides nvim default <C-p> = move up / prev completion)
+vim.keymap.set('n', '<C-p>', function()
+  require('telescope').extensions.neoclip.default()
+end, { desc = 'Yank history picker' })
+
+vim.keymap.set('t', '<C-p>', function()
+  -- exit terminal mode first, then open picker
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-\\><C-n>', true, false, true), 'n', false)
+  vim.schedule(function()
+    require('telescope').extensions.neoclip.default()
+  end)
+end, { desc = 'Yank history picker (from terminal)' })

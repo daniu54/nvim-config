@@ -62,6 +62,15 @@ require("lazy").setup({
         end,
     },
 
+    -- yank history picker (telescope extension)
+    {
+        'AckslD/nvim-neoclip.lua',
+        dependencies = { 'nvim-lua/plenary.nvim' },
+        config = function()
+            require('neoclip').setup()
+        end,
+    },
+
     -- formatter
     'stevearc/conform.nvim',
 
