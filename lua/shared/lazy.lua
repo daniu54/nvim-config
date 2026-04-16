@@ -62,12 +62,22 @@ require("lazy").setup({
         end,
     },
 
+    -- sqlite backend (used by neoclip for persistent yank history)
+    { 'kkharji/sqlite.lua' },
+
     -- yank history picker (telescope extension)
     {
         'AckslD/nvim-neoclip.lua',
-        dependencies = { 'nvim-lua/plenary.nvim' },
+        dependencies = { 'nvim-lua/plenary.nvim', 'kkharji/sqlite.lua' },
         config = function()
-            require('neoclip').setup()
+            require('neoclip').setup({
+                -- Persist yank history to SQLite so it survives restarts and is
+                -- shared between all nvim instances (outer terminal nvim + inner nvim).
+                enable_persistent_history = true,
+                db_path = vim.fn.stdpath('data') .. '/neoclip.sqlite3',
+                -- Keep up to 1000 entries in the persistent store.
+                db_max_entries = 1000,
+            })
         end,
     },
 
