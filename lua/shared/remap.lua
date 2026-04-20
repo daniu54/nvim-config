@@ -148,18 +148,19 @@ vim.keymap.set("n", "!", function()
 end, { desc = "Run shell command; % = current file" })
 
 -- open visual selection in Firefox
-vim.keymap.set("x", "<C-i>", function()
-  local s = vim.fn.getpos("'<")
-  local e = vim.fn.getpos("'>")
-  local lines = vim.api.nvim_buf_get_lines(0, s[2] - 1, e[2], false)
-  if #lines == 0 then return end
-  lines[1] = lines[1]:sub(s[3])
-  lines[#lines] = lines[#lines]:sub(1, e[3])
-  local text = table.concat(lines, " "):match("^%s*(.-)%s*$")
+-- <leader>b is a reliable fallback to test if the code works vs <C-i> key interception
+local function open_selection_in_firefox()
+  local saved = vim.fn.getreg('z')
+  local saved_type = vim.fn.getregtype('z')
+  vim.cmd('normal! "zy')
+  local text = vim.fn.getreg('z'):match("^%s*(.-)%s*$")
+  vim.fn.setreg('z', saved, saved_type)
   if text == "" then return end
   vim.notify("Opening in Firefox: " .. text)
   vim.fn.jobstart({ vim.fn.expand("~/bin/open-url"), text })
-end, { desc = "Open selection in Firefox" })
+end
+vim.keymap.set("v", "<C-i>",    open_selection_in_firefox, { desc = "Open selection in Firefox" })
+vim.keymap.set("v", "<leader>b", open_selection_in_firefox, { desc = "Open selection in Firefox (fallback)" })
 
 -- navigate back and forwards
 vim.keymap.set({"n"}, "H", ":bp<CR>", { desc = "Move to previous buffer" })
