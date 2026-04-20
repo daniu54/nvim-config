@@ -151,16 +151,6 @@ end, { desc = "Run shell command; % = current file" })
 vim.keymap.set({"n"}, "H", ":bp<CR>", { desc = "Move to previous buffer" })
 vim.keymap.set({"n"}, "L", ":bn<CR>", { desc = "Move to next buffer" })
 
--- ctrl-p in normal mode on a terminal buffer: enter terminal mode and paste
-vim.keymap.set("n", "<C-p>", function()
-  if vim.bo.buftype == "terminal" then
-    local chan = vim.b.terminal_job_id
-    local text = vim.fn.getreg("+")
-    vim.cmd("startinsert")
-    vim.fn.chansend(chan, text)
-  end
-end, { desc = "Enter terminal and paste from system clipboard (terminal buffers only)" })
-
 -- Smart search: letters/digits only → literal (\V), else regex.
 -- Case is handled by ignorecase+smartcase in set.lua.
 -- If the user manually prefixes \v/\V/\c/\C, we leave it alone.
