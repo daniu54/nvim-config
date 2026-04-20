@@ -155,7 +155,8 @@ vim.keymap.set("v", "<leader>i", function()
   local raw = vim.fn.getreg('z')
   vim.fn.setreg('z', saved, saved_type)
 
-  local text = raw:match("^%s*(.-)%s*$")
+  -- collapse newlines and trim
+  local text = raw:gsub("[\r\n]+", " "):match("^%s*(.-)%s*$")
   if text == "" then return end
 
   vim.fn.jobstart({ vim.fn.expand("~/bin/open-url"), text })
