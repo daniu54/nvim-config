@@ -233,38 +233,39 @@ vim.keymap.set('t', '<C-e>', function()
 end, { desc = 'Exit terminal mode, or pass C-e through to inner nvim terminal' })
 
 -- <C-p>: yank history picker (overrides nvim default <C-p> = move up / prev completion)
--- In terminal mode:
---   - if inner nvim is running, forward <C-p> to it
---   - otherwise open picker with a custom <CR> that sends the selected text
---     to the terminal via chan_send (not a buffer paste, which would insert
---     raw characters into the terminal buffer rather than the shell's stdin)
-vim.keymap.set({ 'n', 't' }, '<C-p>', function()
+-- Works in normal, insert, and terminal mode.
+-- Terminal mode: sends selected text to shell stdin via chan_send.
+-- Normal/insert mode: pastes selected text at cursor; re-enters insert mode if triggered from it.
+vim.keymap.set({ 'n', 'i', 't' }, '<C-p>', function()
   local is_terminal = vim.bo.buftype == 'terminal'
   local job_id = is_terminal and vim.b.terminal_job_id or nil
+  local was_insert = vim.api.nvim_get_mode().mode == 'i'
 
-  if is_terminal and terminal_child_is_nvim() then
-    vim.api.nvim_chan_send(job_id, '\x10')   -- forward raw Ctrl-P to inner nvim
-    return
-  end
-
-  local opts = {}
-  if is_terminal and job_id then
-    opts.attach_mappings = function(_, map)
+  local opts = {
+    attach_mappings = function(_, map)
       local actions = require('telescope.actions')
       local state   = require('telescope.actions.state')
-      local function send_to_terminal(bufnr)
+      local function on_select(bufnr)
         local entry = state.get_selected_entry()
         actions.close(bufnr)
-        if entry then
+        if not entry then return end
+
+        if is_terminal and job_id then
           vim.api.nvim_chan_send(job_id, table.concat(entry.contents, '\n'))
+          vim.cmd('startinsert')
+        else
+          local regtype = entry.regtype == 'V' and 'l' or 'c'
+          vim.api.nvim_put(entry.contents, regtype, true, true)
+          if was_insert then
+            vim.api.nvim_feedkeys('a', 'n', false)
+          end
         end
-        vim.cmd('startinsert')
       end
-      map('i', '<CR>', send_to_terminal)
-      map('n', '<CR>', send_to_terminal)
-      return true   -- keep all other default neoclip mappings
+      map('i', '<CR>', on_select)
+      map('n', '<CR>', on_select)
+      return true
     end
-  end
+  }
 
   require('telescope').extensions.neoclip.default(opts)
-end, { desc = 'Yank history picker (terminal: sends to stdin via chan_send)' })
+end, { desc = 'Yank history picker' })
