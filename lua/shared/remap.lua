@@ -147,24 +147,19 @@ vim.keymap.set("n", "!", function()
   vim.cmd("!" .. expanded)
 end, { desc = "Run shell command; % = current file" })
 
--- open visual selection in Firefox (terminal buffers only)
--- if selection looks like a URL, open it; otherwise do a Google search
-vim.api.nvim_create_autocmd("TermOpen", {
-  callback = function()
-    vim.keymap.set("x", "<C-i>", function()
-      local s = vim.fn.getpos("'<")
-      local e = vim.fn.getpos("'>")
-      local lines = vim.api.nvim_buf_get_lines(0, s[2] - 1, e[2], false)
-      if #lines == 0 then return end
-      lines[1] = lines[1]:sub(s[3])
-      lines[#lines] = lines[#lines]:sub(1, e[3])
-      local text = table.concat(lines, " "):match("^%s*(.-)%s*$")
-      if text == "" then return end
-
-      vim.fn.jobstart({ vim.fn.expand("~/bin/open-url"), text })
-    end, { buffer = true, desc = "Open selection in Firefox" })
-  end,
-})
+-- open visual selection in Firefox
+vim.keymap.set("x", "<C-i>", function()
+  local s = vim.fn.getpos("'<")
+  local e = vim.fn.getpos("'>")
+  local lines = vim.api.nvim_buf_get_lines(0, s[2] - 1, e[2], false)
+  if #lines == 0 then return end
+  lines[1] = lines[1]:sub(s[3])
+  lines[#lines] = lines[#lines]:sub(1, e[3])
+  local text = table.concat(lines, " "):match("^%s*(.-)%s*$")
+  if text == "" then return end
+  vim.notify("Opening in Firefox: " .. text)
+  vim.fn.jobstart({ vim.fn.expand("~/bin/open-url"), text })
+end, { desc = "Open selection in Firefox" })
 
 -- navigate back and forwards
 vim.keymap.set({"n"}, "H", ":bp<CR>", { desc = "Move to previous buffer" })
