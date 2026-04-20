@@ -161,17 +161,7 @@ vim.api.nvim_create_autocmd("TermOpen", {
       local text = table.concat(lines, " "):match("^%s*(.-)%s*$")
       if text == "" then return end
 
-      local url
-      if text:match("^https?://") then
-        url = text
-      else
-        local encoded = text:gsub("([^%w%-%.%_%~ ])", function(c)
-          return string.format("%%%02X", string.byte(c))
-        end):gsub(" ", "+")
-        url = "https://www.google.com/search?q=" .. encoded
-      end
-
-      vim.fn.jobstart({ vim.fn.expand("~/bin/open-url"), url })
+      vim.fn.jobstart({ vim.fn.expand("~/bin/open-url"), text })
     end, { buffer = true, desc = "Open selection in Firefox" })
   end,
 })
