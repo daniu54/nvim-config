@@ -149,37 +149,16 @@ end, { desc = "Run shell command; % = current file" })
 
 -- open visual selection in Firefox (<leader>i)
 vim.keymap.set("v", "<leader>i", function()
-  vim.notify("[firefox] keymap fired")
-
   local saved = vim.fn.getreg('z')
   local saved_type = vim.fn.getregtype('z')
   vim.cmd('normal! "zy')
   local raw = vim.fn.getreg('z')
   vim.fn.setreg('z', saved, saved_type)
 
-  vim.notify("[firefox] raw selection: " .. vim.inspect(raw))
-
   local text = raw:match("^%s*(.-)%s*$")
-  if text == "" then
-    vim.notify("[firefox] selection empty after trim, aborting")
-    return
-  end
+  if text == "" then return end
 
-  vim.notify("[firefox] sending to open-url: " .. text)
-  local open_url = vim.fn.expand("~/bin/open-url")
-  vim.notify("[firefox] open-url path: " .. open_url)
-
-  local job_id = vim.fn.jobstart({ open_url, text }, {
-    on_exit = function(_, code)
-      vim.notify("[firefox] open-url exited with code " .. code)
-    end,
-    on_stderr = function(_, data)
-      if data and #data > 0 then
-        vim.notify("[firefox] stderr: " .. table.concat(data, "\n"))
-      end
-    end,
-  })
-  vim.notify("[firefox] job_id: " .. job_id)
+  vim.fn.jobstart({ vim.fn.expand("~/bin/open-url"), text })
 end, { desc = "Open selection in Firefox" })
 
 -- navigate back and forwards
