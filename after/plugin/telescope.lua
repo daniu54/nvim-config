@@ -252,7 +252,7 @@ vim.keymap.set({ 'n', 'i', 't' }, '<C-p>', function()
 
         if is_terminal and job_id then
           vim.api.nvim_chan_send(job_id, table.concat(entry.contents, '\n'))
-          vim.cmd('startinsert')
+          vim.schedule(function() vim.cmd('startinsert') end)
         else
           local regtype = entry.regtype == 'V' and 'l' or 'c'
           vim.api.nvim_put(entry.contents, regtype, true, true)
