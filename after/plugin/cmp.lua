@@ -27,6 +27,8 @@ cmp.setup({
         ['<CR>']      = cmp.mapping.confirm({ select = false }),  -- confirm only if explicitly selected
         ['<C-e>']     = cmp.mapping.abort(),                      -- close menu
         ['<C-Space>'] = cmp.mapping.complete(),                   -- manually trigger
+        -- <C-p> is reserved for the telescope yank-history picker (telescope.lua)
+        ['<C-p>']     = cmp.mapping(function(fallback) fallback() end, { 'i' }),
     }),
 
     sources = cmp.config.sources(
