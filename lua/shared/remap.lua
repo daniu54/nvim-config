@@ -147,9 +147,40 @@ vim.keymap.set("n", "!", function()
   vim.cmd("!" .. expanded)
 end, { desc = "Run shell command; % = current file" })
 
--- DEBUG: test that visual keymaps fire at all
-vim.keymap.set("v", "<C-i>",    function() vim.notify("ci fired") end,  { desc = "debug ci" })
-vim.keymap.set("v", "<leader>i", function() vim.notify("li fired") end, { desc = "debug li" })
+-- open visual selection in Firefox (<leader>i)
+vim.keymap.set("v", "<leader>i", function()
+  vim.notify("[firefox] keymap fired")
+
+  local saved = vim.fn.getreg('z')
+  local saved_type = vim.fn.getregtype('z')
+  vim.cmd('normal! "zy')
+  local raw = vim.fn.getreg('z')
+  vim.fn.setreg('z', saved, saved_type)
+
+  vim.notify("[firefox] raw selection: " .. vim.inspect(raw))
+
+  local text = raw:match("^%s*(.-)%s*$")
+  if text == "" then
+    vim.notify("[firefox] selection empty after trim, aborting")
+    return
+  end
+
+  vim.notify("[firefox] sending to open-url: " .. text)
+  local open_url = vim.fn.expand("~/bin/open-url")
+  vim.notify("[firefox] open-url path: " .. open_url)
+
+  local job_id = vim.fn.jobstart({ open_url, text }, {
+    on_exit = function(_, code)
+      vim.notify("[firefox] open-url exited with code " .. code)
+    end,
+    on_stderr = function(_, data)
+      if data and #data > 0 then
+        vim.notify("[firefox] stderr: " .. table.concat(data, "\n"))
+      end
+    end,
+  })
+  vim.notify("[firefox] job_id: " .. job_id)
+end, { desc = "Open selection in Firefox" })
 
 -- navigate back and forwards
 vim.keymap.set({"n"}, "H", ":bp<CR>", { desc = "Move to previous buffer" })
