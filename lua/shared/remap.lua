@@ -2,7 +2,7 @@ vim.g.mapleader = " "
 vim.g.maplocalleader = ' '
 
 -- open project view
-vim.keymap.set("n", "<leader>pv", function() vim.cmd("Ex") end)
+vim.keymap.set("n", "<leader>pv", function() vim.cmd("Texplore") end)
 
 -- move selection up and down while preserving indentation
 vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv")
