@@ -59,6 +59,29 @@ vim.api.nvim_create_autocmd("FileType", {
       local expanded = cmd:gsub("%%", vim.fn.shellescape(file))
       vim.cmd("!" .. expanded)
     end, { buffer = true, desc = "Run shell command; % = file under cursor" })
+
+    -- o: open file in current window (overrides netrw default hsplit).
+    -- Toggles netrw_browse_split=0 around a synthetic <CR>, then restores it
+    -- to 3 (the default we set in set.lua).
+    vim.keymap.set("n", "o", function()
+      vim.g.netrw_browse_split = 0
+      vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, false, true), "m", false)
+      vim.schedule(function() vim.g.netrw_browse_split = 3 end)
+    end, { buffer = true, desc = "netrw: open in current window" })
+
+    -- T (and <S-CR>): open file in new tab AND lcd to its dir.
+    -- Delegates path resolution to netrw's own `t` so it works in tree mode.
+    local function tab_and_cd()
+      vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("t", true, false, true), "m", false)
+      vim.schedule(function()
+        local dir = vim.fn.expand("%:p:h")
+        if dir and dir ~= "" and vim.fn.isdirectory(dir) == 1 then
+          vim.cmd("lcd " .. vim.fn.fnameescape(dir))
+        end
+      end)
+    end
+    vim.keymap.set("n", "T", tab_and_cd, { buffer = true, desc = "netrw: open in new tab + lcd" })
+    vim.keymap.set("n", "<S-CR>", tab_and_cd, { buffer = true, desc = "netrw: open in new tab + lcd" })
   end,
 })
 

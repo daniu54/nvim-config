@@ -2,6 +2,7 @@ vim.api.nvim_command('set clipboard=unnamedplus')
 
 vim.api.nvim_set_var('netrw_bufsettings', 'noma nomod nu nowrap ro')
 vim.g.netrw_liststyle = 3  -- tree view by default
+vim.g.netrw_browse_split = 3  -- <CR> on file opens in new tab; dirs still descend in place
 
 vim.api.nvim_create_autocmd("TermOpen", {
   pattern = "*",

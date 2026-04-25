@@ -102,28 +102,45 @@ local function get_visual_selection()
   return (text:gsub('\n.*', ''))
 end
 
--- <C-o>: find files — mirrors VSCode ctrl+o (quickOpen → file picker)
+-- <C-o>: find files from vim's cwd (stable — does NOT shift with current buffer/netrw).
+-- Mirrors VSCode ctrl+o (quickOpen → file picker).
 -- NOTE: overrides nvim's built-in <C-o> (jumplist back)
 vim.keymap.set('n', '<C-o>', function()
-  builtin.find_files({ cwd = search_cwd() })
-end, { desc = 'Telescope: find files' })
+  builtin.find_files({ cwd = vim.fn.getcwd() })
+end, { desc = 'Telescope: find files (cwd)' })
 
 -- Visual <C-o>: find files with selection pre-filled
 vim.keymap.set('v', '<C-o>', function()
   local text = get_visual_selection()
-  builtin.find_files({ cwd = search_cwd(), default_text = text })
-end, { desc = 'Telescope: find files (selection)' })
+  builtin.find_files({ cwd = vim.fn.getcwd(), default_text = text })
+end, { desc = 'Telescope: find files (cwd, selection)' })
 
--- <leader>fg: live grep
+-- <leader>fg: live grep from vim's cwd (stable)
 vim.keymap.set('n', '<leader>fg', function()
-  builtin.live_grep({ cwd = search_cwd() })
-end, { desc = 'Telescope: live grep' })
+  builtin.live_grep({ cwd = vim.fn.getcwd() })
+end, { desc = 'Telescope: live grep (cwd)' })
 
 -- Visual <leader>fg: live grep with selection pre-filled
 vim.keymap.set('v', '<leader>fg', function()
   local text = get_visual_selection()
-  builtin.live_grep({ cwd = search_cwd(), default_text = text })
-end, { desc = 'Telescope: live grep (selection)' })
+  builtin.live_grep({ cwd = vim.fn.getcwd(), default_text = text })
+end, { desc = 'Telescope: live grep (cwd, selection)' })
+
+-- <leader>O: lcd to context dir (project root walk from netrw curdir / file dir),
+-- then find files. The "shift" variant of <C-o> — explicitly moves the active
+-- directory before searching.
+vim.keymap.set('n', '<leader>O', function()
+  local dir = search_cwd()
+  vim.cmd('lcd ' .. vim.fn.fnameescape(dir))
+  builtin.find_files({ cwd = dir })
+end, { desc = 'Telescope: lcd to ctx + find files' })
+
+-- <leader>fG: lcd to context dir, then live grep. Shift variant of <leader>fg.
+vim.keymap.set('n', '<leader>fG', function()
+  local dir = search_cwd()
+  vim.cmd('lcd ' .. vim.fn.fnameescape(dir))
+  builtin.live_grep({ cwd = dir })
+end, { desc = 'Telescope: lcd to ctx + live grep' })
 
 -- <leader>fo: recent files — mirrors VSCode ctrl+shift+o (openRecent)
 vim.keymap.set('n', '<leader>fo', builtin.oldfiles, { desc = 'Telescope: recent files' })
