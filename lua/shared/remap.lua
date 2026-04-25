@@ -69,19 +69,11 @@ vim.api.nvim_create_autocmd("FileType", {
       vim.schedule(function() vim.g.netrw_browse_split = 3 end)
     end, { buffer = true, desc = "netrw: open in current window" })
 
-    -- T (and <S-CR>): open file in new tab AND lcd to its dir.
-    -- Delegates path resolution to netrw's own `t` so it works in tree mode.
-    local function tab_and_cd()
+    -- \: open file in background tab (new tab, stay focused on netrw).
+    vim.keymap.set("n", "\\", function()
       vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("t", true, false, true), "m", false)
-      vim.schedule(function()
-        local dir = vim.fn.expand("%:p:h")
-        if dir and dir ~= "" and vim.fn.isdirectory(dir) == 1 then
-          vim.cmd("lcd " .. vim.fn.fnameescape(dir))
-        end
-      end)
-    end
-    vim.keymap.set("n", "T", tab_and_cd, { buffer = true, desc = "netrw: open in new tab + lcd" })
-    vim.keymap.set("n", "<S-CR>", tab_and_cd, { buffer = true, desc = "netrw: open in new tab + lcd" })
+      vim.schedule(function() vim.cmd("tabprev") end)
+    end, { buffer = true, desc = "netrw: open in background tab" })
   end,
 })
 
@@ -159,6 +151,17 @@ vim.keymap.set("n", "<leader>gf", function()
 
   open_resolved(resolved)
 end, { desc = "Open path under cursor in new window" })
+
+-- yp: copy full path of current file to Windows clipboard (mirrors netrw yp)
+vim.keymap.set("n", "yp", function()
+  local path = vim.fn.expand("%:p")
+  if path == "" then
+    vim.notify("No file", vim.log.levels.WARN)
+    return
+  end
+  vim.fn.system("clip.exe", path)
+  vim.notify("Copied: " .. path)
+end, { desc = "Copy current file path to clipboard" })
 
 -- !: run a shell command; % is replaced with the current file's full path.
 -- Mirrors the netrw "!" mapping for regular file buffers.
