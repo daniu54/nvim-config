@@ -47,6 +47,17 @@ vim.api.nvim_create_autocmd('User', {
 })
 
 local builtin = require('telescope.builtin')
+local actions = require('telescope.actions')
+
+-- Wrap opts to make <CR> open the selected file in a new tab.
+local function in_tab(opts)
+  opts = opts or {}
+  opts.attach_mappings = function(_, map)
+    map({ 'i', 'n' }, '<CR>', actions.select_tab)
+    return true
+  end
+  return opts
+end
 
 -- Resolve the "context" directory for the current buffer:
 --   netrw  → directory being browsed
@@ -106,25 +117,25 @@ end
 -- Mirrors VSCode ctrl+o (quickOpen → file picker).
 -- NOTE: overrides nvim's built-in <C-o> (jumplist back)
 vim.keymap.set('n', '<C-o>', function()
-  builtin.find_files({ cwd = vim.fn.getcwd() })
-end, { desc = 'Telescope: find files (cwd)' })
+  builtin.find_files(in_tab({ cwd = vim.fn.getcwd() }))
+end, { desc = 'Telescope: find files (cwd, new tab)' })
 
 -- Visual <C-o>: find files with selection pre-filled
 vim.keymap.set('v', '<C-o>', function()
   local text = get_visual_selection()
-  builtin.find_files({ cwd = vim.fn.getcwd(), default_text = text })
-end, { desc = 'Telescope: find files (cwd, selection)' })
+  builtin.find_files(in_tab({ cwd = vim.fn.getcwd(), default_text = text }))
+end, { desc = 'Telescope: find files (cwd, selection, new tab)' })
 
 -- <leader>fg: live grep from vim's cwd (stable)
 vim.keymap.set('n', '<leader>fg', function()
-  builtin.live_grep({ cwd = vim.fn.getcwd() })
-end, { desc = 'Telescope: live grep (cwd)' })
+  builtin.live_grep(in_tab({ cwd = vim.fn.getcwd() }))
+end, { desc = 'Telescope: live grep (cwd, new tab)' })
 
 -- Visual <leader>fg: live grep with selection pre-filled
 vim.keymap.set('v', '<leader>fg', function()
   local text = get_visual_selection()
-  builtin.live_grep({ cwd = vim.fn.getcwd(), default_text = text })
-end, { desc = 'Telescope: live grep (cwd, selection)' })
+  builtin.live_grep(in_tab({ cwd = vim.fn.getcwd(), default_text = text }))
+end, { desc = 'Telescope: live grep (cwd, selection, new tab)' })
 
 -- <leader>O: lcd to context dir (project root walk from netrw curdir / file dir),
 -- then find files. The "shift" variant of <C-o> — explicitly moves the active
