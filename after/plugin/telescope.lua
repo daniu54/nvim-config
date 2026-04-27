@@ -217,10 +217,6 @@ end
 
 -- <C-t>t: open terminal in new tab
 vim.keymap.set('n', '<C-t>t', open_term_tab, { desc = 'Open terminal in new tab at context dir' })
-vim.keymap.set('t', '<C-t>t', function()
-  vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x14')
-  -- 't' will be sent naturally by terminal passthrough after C-t
-end, { desc = 'Pass C-t through to shell/inner nvim' })
 
 -- <C-t>n: new empty tab
 vim.keymap.set('n', '<C-t>n', function() vim.cmd('tabnew') end, { desc = 'New tab' })
