@@ -159,11 +159,11 @@ vim.keymap.set('n', '<leader>fo', builtin.oldfiles, { desc = 'Telescope: recent 
 -- <leader>fb: open buffers
 vim.keymap.set('n', '<leader>fb', builtin.buffers, { desc = 'Telescope: buffers' })
 
--- <C-t>: open terminal in a vertical split at context directory
+-- <C-t>t: open terminal in a new tab at context directory
 -- works in normal, netrw, and terminal buffers
-local function open_term_vsplit()
+local function open_term_tab()
   local dir = ctx_cwd()
-  vim.cmd('rightbelow vsplit')
+  vim.cmd('tabnew')
   vim.cmd('lcd ' .. vim.fn.fnameescape(dir))
   vim.cmd('terminal')
   vim.cmd('startinsert')
@@ -215,11 +215,85 @@ local function inner_nvim_terminal_is_active()
   return result:gsub('%s+', '') == 'terminal'
 end
 
-vim.keymap.set('n', '<C-t>', open_term_vsplit, { desc = 'Open terminal in vsplit at context dir' })
-vim.keymap.set('t', '<C-t>', function()
-  -- always pass C-t through to the shell (or inner nvim if running)
+-- <C-t>t: open terminal in new tab
+vim.keymap.set('n', '<C-t>t', open_term_tab, { desc = 'Open terminal in new tab at context dir' })
+vim.keymap.set('t', '<C-t>t', function()
   vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x14')
+  -- 't' will be sent naturally by terminal passthrough after C-t
 end, { desc = 'Pass C-t through to shell/inner nvim' })
+
+-- <C-t>n: new empty tab
+vim.keymap.set('n', '<C-t>n', function() vim.cmd('tabnew') end, { desc = 'New tab' })
+
+-- <C-t>x: close current tab
+vim.keymap.set('n', '<C-t>x', function() vim.cmd('tabclose') end, { desc = 'Close current tab' })
+
+-- <C-t>s: split horizontally — original buffer goes to bottom (focused), new buffer on top
+vim.keymap.set('n', '<C-t>s', function()
+  vim.cmd('leftabove split')  -- new window above, cursor moves there
+  vim.cmd('enew')
+  vim.cmd('wincmd j')         -- focus bottom (original buffer)
+end, { desc = 'Hsplit: original buffer bottom (focused), new buffer top' })
+
+-- <C-t>v: split vertically — original buffer goes to left (focused), new buffer on right
+vim.keymap.set('n', '<C-t>v', function()
+  vim.cmd('rightbelow vsplit')  -- new window to the right, cursor moves there
+  vim.cmd('enew')
+  vim.cmd('wincmd h')           -- focus left (original buffer)
+end, { desc = 'Vsplit: original buffer left (focused), new buffer right' })
+
+-- <C-t>b: telescope tab picker
+local function pick_tab()
+  local pickers = require('telescope.pickers')
+  local finders = require('telescope.finders')
+  local conf    = require('telescope.config').values
+  local actions = require('telescope.actions')
+  local astate  = require('telescope.actions.state')
+
+  local tabs        = vim.api.nvim_list_tabpages()
+  local current_tab = vim.api.nvim_get_current_tabpage()
+  local entries     = {}
+
+  for i, tab in ipairs(tabs) do
+    local wins = vim.api.nvim_tabpage_list_wins(tab)
+    local seen = {}
+    local buf_names = {}
+    for _, win in ipairs(wins) do
+      local buf   = vim.api.nvim_win_get_buf(win)
+      local bname = vim.api.nvim_buf_get_name(buf)
+      bname = bname == '' and '[No Name]' or vim.fn.fnamemodify(bname, ':~:.')
+      if not seen[bname] then
+        seen[bname] = true
+        table.insert(buf_names, bname)
+      end
+    end
+
+    local display = i .. ' │ ' .. table.concat(buf_names, ', ')
+    if tab == current_tab then display = display .. '  ← here' end
+    table.insert(entries, { tab = tab, display = display })
+  end
+
+  pickers.new({}, {
+    prompt_title = 'Tabs',
+    finder = finders.new_table({
+      results = entries,
+      entry_maker = function(e)
+        return { value = e, display = e.display, ordinal = e.display }
+      end,
+    }),
+    sorter = conf.generic_sorter({}),
+    attach_mappings = function(_, _)
+      actions.select_default:replace(function(bufnr)
+        local sel = astate.get_selected_entry()
+        actions.close(bufnr)
+        if sel then vim.api.nvim_set_current_tabpage(sel.value.tab) end
+      end)
+      return true
+    end,
+  }):find()
+end
+
+vim.keymap.set('n', '<C-t>b', pick_tab, { desc = 'Telescope: pick tab' })
 
 -- <C-s>: open terminal in a horizontal split below at context directory
 local function open_term_split()
