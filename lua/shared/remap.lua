@@ -188,6 +188,12 @@ vim.keymap.set("v", "<leader>i", function()
   vim.fn.jobstart({ vim.fn.expand("~/bin/open-url"), text })
 end, { desc = "Open selection in Firefox" })
 
+-- Squirrel (.nut) uses C-style line comments; no treesitter grammar available
+vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
+    pattern = "*.nut",
+    callback = function() vim.bo.commentstring = "// %s" end,
+})
+
 -- close current split
 vim.keymap.set("n", "<C-w>x", "<C-w>c", { desc = "Close current split" })
 

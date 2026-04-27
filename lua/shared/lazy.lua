@@ -46,6 +46,12 @@ require("lazy").setup({
             require('Comment').setup({
                 mappings = { extra = false },
             })
+            -- <leader>c: toggle line comment on each selected line
+            vim.keymap.set("v", "<leader>c", "<Plug>(comment_toggle_linewise_visual)",
+                { desc = "Toggle line comment" })
+            -- <leader>C: toggle block comment around the selection
+            vim.keymap.set("v", "<leader>C", "<Plug>(comment_toggle_blockwise_visual)",
+                { desc = "Toggle block comment" })
         end,
     },
 
