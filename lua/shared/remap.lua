@@ -188,6 +188,9 @@ vim.keymap.set("v", "<leader>i", function()
   vim.fn.jobstart({ vim.fn.expand("~/bin/open-url"), text })
 end, { desc = "Open selection in Firefox" })
 
+-- close current split
+vim.keymap.set("n", "<C-w>x", "<C-w>c", { desc = "Close current split" })
+
 -- navigate back and forwards
 vim.keymap.set({"n"}, "H", ":bp<CR>", { desc = "Move to previous buffer" })
 vim.keymap.set({"n"}, "L", ":bn<CR>", { desc = "Move to next buffer" })
