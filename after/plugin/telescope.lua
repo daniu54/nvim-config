@@ -228,19 +228,49 @@ vim.keymap.set('n', '<C-t>n', function() vim.cmd('tabnew') end, { desc = 'New ta
 -- <C-t>x: close current tab
 vim.keymap.set('n', '<C-t>x', function() vim.cmd('tabclose') end, { desc = 'Close current tab' })
 
--- <C-t>s: split horizontally — original buffer goes to bottom (focused), new buffer on top
-vim.keymap.set('n', '<C-t>s', function()
-  vim.cmd('leftabove split')  -- new window above, cursor moves there
-  vim.cmd('enew')
-  vim.cmd('wincmd j')         -- focus bottom (original buffer)
-end, { desc = 'Hsplit: original buffer bottom (focused), new buffer top' })
+-- Pull the previous tab's buffer into the new split, closing that tab if it was single-window.
+local function split_with_prev_tab(split_cmd, focus_wincmd)
+  local prev_nr = vim.fn.tabpagenr('#')  -- 1-based; 0 means no previous tab
+  local prev_buf, close_prev = nil, false
 
--- <C-t>v: split vertically — original buffer goes to left (focused), new buffer on right
+  if prev_nr > 0 then
+    local tabs = vim.api.nvim_list_tabpages()
+    if prev_nr <= #tabs then
+      local prev_tab = tabs[prev_nr]
+      local wins = vim.api.nvim_tabpage_list_wins(prev_tab)
+      prev_buf   = vim.api.nvim_win_get_buf(vim.api.nvim_tabpage_get_win(prev_tab))
+      close_prev = (#wins == 1)
+    end
+  end
+
+  vim.cmd(split_cmd)
+
+  if prev_buf then
+    vim.api.nvim_win_set_buf(0, prev_buf)
+    if close_prev then
+      vim.cmd('tabclose ' .. prev_nr)
+    end
+  else
+    vim.cmd('enew')
+  end
+
+  vim.cmd('wincmd ' .. focus_wincmd)
+end
+
+-- <C-t>s: split horizontally — original buffer bottom (focused), prev-tab buffer top
+vim.keymap.set('n', '<C-t>s', function()
+  split_with_prev_tab('leftabove split', 'j')
+end, { desc = 'Hsplit: original buf bottom (focused), prev-tab buf top' })
+
+-- <C-t>v: split vertically — original buffer left (focused), prev-tab buffer right
 vim.keymap.set('n', '<C-t>v', function()
-  vim.cmd('rightbelow vsplit')  -- new window to the right, cursor moves there
-  vim.cmd('enew')
-  vim.cmd('wincmd h')           -- focus left (original buffer)
-end, { desc = 'Vsplit: original buffer left (focused), new buffer right' })
+  split_with_prev_tab('rightbelow vsplit', 'h')
+end, { desc = 'Vsplit: original buf left (focused), prev-tab buf right' })
+
+-- <C-t>o: move current split into its own new tab (like <C-w>T)
+vim.keymap.set('n', '<C-t>o', function()
+  vim.cmd('wincmd T')
+end, { desc = 'Move current split to new tab (maximize)' })
 
 -- <C-t>b: telescope tab picker
 local function pick_tab()
