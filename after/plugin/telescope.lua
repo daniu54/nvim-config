@@ -340,6 +340,12 @@ vim.keymap.set('t', '<C-s>', function()
   vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x13')
 end, { desc = 'Pass C-s through to shell/inner nvim' })
 
+-- <C-t>: forward bare C-t to the terminal in --TERMINAL-- mode only (not terminal normal mode).
+-- Allows the shell/fzf/etc. to receive C-t while nvim still owns C-t chord sequences (C-t t/n/x/…).
+vim.keymap.set('t', '<C-t>', function()
+  vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x14')
+end, { desc = 'Forward bare <C-t> to terminal' })
+
 -- Exit terminal mode (and pass the escape through to inner nvim if it's running a terminal).
 --
 -- Key choice history — why so many candidates were rejected:
