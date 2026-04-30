@@ -336,11 +336,14 @@ vim.keymap.set('t', '<C-s>', function()
   vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x13')
 end, { desc = 'Pass C-s through to shell/inner nvim' })
 
--- <C-t>: forward bare C-t to the terminal in --TERMINAL-- mode only (not terminal normal mode).
--- Allows the shell/fzf/etc. to receive C-t while nvim still owns C-t chord sequences (C-t t/n/x/…).
+-- <C-t>/<C-o>: forward to terminal — lets shell/fzf/etc. receive them.
 vim.keymap.set('t', '<C-t>', function()
   vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x14')
-end, { desc = 'Forward bare <C-t> to terminal' })
+end, { desc = 'Forward <C-t> to terminal' })
+
+vim.keymap.set('t', '<C-o>', function()
+  vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x0f')
+end, { desc = 'Forward <C-o> to terminal' })
 
 -- Exit terminal mode (and pass the escape through to inner nvim if it's running a terminal).
 --
@@ -367,12 +370,13 @@ vim.keymap.set('t', '<C-e>', function()
 end, { desc = 'Exit terminal mode, or pass C-e through to inner nvim terminal' })
 
 -- <C-p>: yank history picker (overrides nvim default <C-p> = move up / prev completion)
--- Works in normal, insert, and terminal mode.
--- Terminal mode: sends selected text to shell stdin via chan_send.
+-- Works in normal and insert mode. Terminal mode forwards bare C-p to the shell.
 -- Normal/insert mode: pastes selected text at cursor; re-enters insert mode if triggered from it.
-vim.keymap.set({ 'n', 'i', 't' }, '<C-p>', function()
-  local is_terminal = vim.bo.buftype == 'terminal'
-  local job_id = is_terminal and vim.b.terminal_job_id or nil
+vim.keymap.set('t', '<C-p>', function()
+  vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x10')
+end, { desc = 'Forward <C-p> to terminal' })
+
+vim.keymap.set({ 'n', 'i' }, '<C-p>', function()
   local was_insert = vim.api.nvim_get_mode().mode == 'i'
 
   local opts = {
@@ -384,15 +388,10 @@ vim.keymap.set({ 'n', 'i', 't' }, '<C-p>', function()
         actions.close(bufnr)
         if not entry then return end
 
-        if is_terminal and job_id then
-          vim.api.nvim_chan_send(job_id, table.concat(entry.contents, '\n'))
-          vim.schedule(function() vim.cmd('startinsert') end)
-        else
-          local regtype = entry.regtype == 'V' and 'l' or 'c'
-          vim.api.nvim_put(entry.contents, regtype, true, true)
-          if was_insert then
-            vim.api.nvim_feedkeys('a', 'n', false)
-          end
+        local regtype = entry.regtype == 'V' and 'l' or 'c'
+        vim.api.nvim_put(entry.contents, regtype, true, true)
+        if was_insert then
+          vim.api.nvim_feedkeys('a', 'n', false)
         end
       end
       map('i', '<CR>', on_select)
