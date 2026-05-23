@@ -12,6 +12,42 @@ vim.api.nvim_create_autocmd("TermOpen", {
   end,
 })
 
+-- Terminal-normal mode (nt) cursor: orange via OSC 12 escape sequence.
+--
+-- WHY not guicursor: "nt" is not a valid guicursor mode string (E546). Neovim's
+-- cursor shape table has no entry for nt — it reuses SHAPE_IDX_N (normal mode).
+--
+-- WHY not nvim_set_hl(Cursor/TermCursor): Cursor applies to normal mode only;
+-- TermCursor was for the virtual cursor drawn inside a terminal buffer in t-mode,
+-- but that was removed in nvim PR #31562. Neither hl group affects nt-mode cursor.
+--
+-- SOLUTION: OSC 12 / OSC 112 — escape sequences sent to the outer terminal emulator
+-- (Windows Terminal) directly via io.write to nvim's stdout. Windows Terminal
+-- honours these to set / reset the cursor colour at the terminal level.
+--   OSC 12 ; <colour> BEL  — set cursor colour
+--   OSC 112 BEL            — reset to terminal default
+--
+-- WHY defer on enter: when pressing Ctrl-e (t→nt), the shell may redraw its prompt
+-- via the pty immediately after the mode change, emitting cursor sequences that
+-- override ours. Deferring 80 ms lets that output flush first.
+local function cursor_orange()
+  io.write("\027]12;#ff8800\007")
+  io.flush()
+end
+local function cursor_reset()
+  io.write("\027]112\007")
+  io.flush()
+end
+
+vim.api.nvim_create_autocmd("ModeChanged", {
+  pattern = "*:nt",
+  callback = function() vim.defer_fn(cursor_orange, 80) end,
+})
+vim.api.nvim_create_autocmd("ModeChanged", {
+  pattern = "nt:*",
+  callback = cursor_reset,
+})
+
 -- Re-enter terminal mode when nvim regains focus while a terminal buffer is active
 vim.api.nvim_create_autocmd("FocusGained", {
   callback = function()
