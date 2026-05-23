@@ -3,6 +3,37 @@
 -- controlling terminal (= the outer Windows Terminal pane). Complements the
 -- zsh precmd hook in ~/.zshrc for shell prompts and nvim :terminal buffers.
 
+-- ── background image dimming ──────────────────────────────────────────────────
+-- Dims the WT background image while nvim is active; restores on leave.
+-- Must match _WT_SHELL_OPACITY in zshrc.visuals.
+local WT_SETTINGS = "/mnt/c/Users/HP Pavilion  15-bc07/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json"
+local WT_PROFILE  = "Debian.01"
+local WT_DIM_OPACITY   = 0.08
+local WT_SHELL_OPACITY = 0.18
+
+local _set_opacity_py = [[
+import sys, json
+settings, profile, opacity = sys.argv[1], sys.argv[2], float(sys.argv[3])
+d = json.load(open(settings))
+for p in d["profiles"]["list"]:
+    if p.get("name") == profile:
+        p["backgroundImageOpacity"] = opacity
+        break
+open(settings, "w").write(json.dumps(d, indent=4))
+]]
+
+local function set_bg_opacity(opacity)
+  vim.fn.system({ "python3", "-c", _set_opacity_py, WT_SETTINGS, WT_PROFILE, tostring(opacity) })
+end
+
+vim.api.nvim_create_autocmd("VimEnter", {
+  callback = function() vim.schedule(function() set_bg_opacity(WT_DIM_OPACITY) end) end,
+})
+vim.api.nvim_create_autocmd("VimLeave", {
+  callback = function() set_bg_opacity(WT_SHELL_OPACITY) end,
+})
+-- ─────────────────────────────────────────────────────────────────────────────
+
 -- ── color config ─────────────────────────────────────────────────────────────
 local COLORS = {
   default  = "#262A30",  -- matches "Color Scheme 10" background
