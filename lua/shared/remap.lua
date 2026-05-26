@@ -188,24 +188,12 @@ vim.keymap.set("v", "<leader>i", function()
   vim.fn.jobstart({ vim.fn.expand("~/bin/open-url"), text })
 end, { desc = "Open selection in Firefox" })
 
--- fold level helpers
-local function set_foldlevel_local(level)
-  local cursor_line = vim.fn.line(".")
-  local total       = vim.fn.line("$")
+-- fold helpers
+-- zL/zl override scroll-right (zL = half screen, zl = 1 char) — unused with wrap on
+-- Both accept: empty → level 1, number → fold level, string → fuzzy term search
 
-  local start_l = cursor_line
-  for i = cursor_line - 1, 1, -1 do
-    if vim.fn.foldlevel(i) == 0 then break end
-    start_l = i
-  end
-  local end_l = cursor_line
-  for i = cursor_line + 1, total do
-    if vim.fn.foldlevel(i) == 0 then break end
-    end_l = i
-  end
-
+local function set_foldlevel_range(start_l, end_l, level)
   local saved = vim.fn.getcurpos()
-
   local i = start_l
   while i <= end_l do
     if vim.fn.foldlevel(i) > level and vim.fn.foldclosed(i) == -1 then
@@ -215,7 +203,6 @@ local function set_foldlevel_local(level)
     local fe = vim.fn.foldclosedend(i)
     i = (fe > 0) and (fe + 1) or (i + 1)
   end
-
   i = start_l
   while i <= end_l do
     local fl = vim.fn.foldlevel(i)
@@ -225,26 +212,96 @@ local function set_foldlevel_local(level)
     end
     i = i + 1
   end
-
   vim.fn.setpos(".", saved)
 end
 
--- zL/zl override scroll-right (zL = half screen, zl = 1 char) — unused with wrap on
+local function set_foldlevel_local(level)
+  local cur   = vim.fn.line(".")
+  local total = vim.fn.line("$")
+  local sl, el = cur, cur
+  for i = cur - 1, 1,     -1 do if vim.fn.foldlevel(i) == 0 then break end sl = i end
+  for i = cur + 1, total,  1 do if vim.fn.foldlevel(i) == 0 then break end el = i end
+  set_foldlevel_range(sl, el, level)
+end
+
+-- fuzzy-smart match: exact > prefix > substring > char-order fuzzy
+local function fold_term_score(pat, word)
+  local p, w = pat:lower(), word:lower()
+  if w == p                    then return 4 end
+  if w:sub(1, #p) == p        then return 3 end
+  if w:find(p, 1, true)       then return 2 end
+  local pi = 1
+  for si = 1, #w do
+    if w:sub(si, si) == p:sub(pi, pi) then
+      pi = pi + 1
+      if pi > #p then return 1 end
+    end
+  end
+  return 0
+end
+
+local function find_fold_by_term(term)
+  local total = vim.fn.line("$")
+  local best_line, best_score = nil, 0
+  for i = 1, total do
+    local fl      = vim.fn.foldlevel(i)
+    local prev_fl = (i > 1) and vim.fn.foldlevel(i - 1) or 0
+    if fl > prev_fl then   -- fold header line
+      local word  = vim.fn.getline(i):match("^%s*([^:%s]+)") or ""
+      local score = fold_term_score(term, word)
+      if score > best_score then best_score = score; best_line = i end
+    end
+  end
+  return best_line
+end
+
+local function smart_fold(input, is_global)
+  local s = input:match("^%s*(.-)%s*$")
+  local level = tonumber(s)
+
+  if s == "" or level then
+    -- numeric mode (default 1)
+    local n = level or 1
+    if is_global then vim.wo.foldlevel = n
+    else              set_foldlevel_local(n)
+    end
+    return
+  end
+
+  -- term mode: fuzzy-find fold header, fold its contents
+  local tl = find_fold_by_term(s)
+  if not tl then
+    vim.notify("No fold matching: " .. s, vim.log.levels.WARN)
+    return
+  end
+  local fl    = vim.fn.foldlevel(tl)
+  local total = vim.fn.line("$")
+  local fe    = tl
+  for i = tl + 1, total do
+    if vim.fn.foldlevel(i) < fl then break end
+    fe = i
+  end
+  local label = vim.fn.getline(tl):match("^%s*(.-)%s*$")
+  if is_global then
+    vim.wo.foldlevel = fl
+    vim.notify("foldlevel=" .. fl .. "  (" .. label .. ")")
+  else
+    set_foldlevel_range(tl, fe, fl)
+    vim.notify("folded under: " .. label)
+  end
+end
+
 vim.keymap.set("n", "zL", function()
-  local ok, input = pcall(vim.fn.input, "Fold level: ")
-  if not ok or input == "" then return end
-  local level = tonumber(input)
-  if not level then return end
-  vim.wo.foldlevel = level
-end, { desc = "Set fold level (global)" })
+  local ok, input = pcall(vim.fn.input, "zL: ")
+  if not ok then return end
+  smart_fold(input, true)
+end, { desc = "Fold global: level N, term, or Enter=1" })
 
 vim.keymap.set("n", "zl", function()
-  local ok, input = pcall(vim.fn.input, "Fold level (local): ")
-  if not ok or input == "" then return end
-  local level = tonumber(input)
-  if not level then return end
-  set_foldlevel_local(level)
-end, { desc = "Set fold level (under cursor)" })
+  local ok, input = pcall(vim.fn.input, "zl: ")
+  if not ok then return end
+  smart_fold(input, false)
+end, { desc = "Fold local: level N, term, or Enter=1" })
 
 -- Squirrel (.nut) uses C-style line comments; no treesitter grammar available
 vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
