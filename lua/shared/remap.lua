@@ -229,7 +229,8 @@ local function set_foldlevel_local(level)
   vim.fn.setpos(".", saved)
 end
 
-vim.keymap.set("n", "<leader>zL", function()
+-- zL/zl override scroll-right (zL = half screen, zl = 1 char) — unused with wrap on
+vim.keymap.set("n", "zL", function()
   local ok, input = pcall(vim.fn.input, "Fold level: ")
   if not ok or input == "" then return end
   local level = tonumber(input)
@@ -237,7 +238,7 @@ vim.keymap.set("n", "<leader>zL", function()
   vim.wo.foldlevel = level
 end, { desc = "Set fold level (global)" })
 
-vim.keymap.set("n", "<leader>zl", function()
+vim.keymap.set("n", "zl", function()
   local ok, input = pcall(vim.fn.input, "Fold level (local): ")
   if not ok or input == "" then return end
   local level = tonumber(input)
