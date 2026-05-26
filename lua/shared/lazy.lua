@@ -87,6 +87,31 @@ require("lazy").setup({
         end,
     },
 
+    -- document structure sidebar (classes, functions, etc.)
+    {
+        'stevearc/aerial.nvim',
+        branch = 'nvim-0.11',
+        dependencies = { 'nvim-treesitter/nvim-treesitter' },
+        config = function()
+            require('aerial').setup({
+                backends = { 'treesitter', 'lsp' },
+                layout = {
+                    default_direction = 'left',
+                    min_width = 30,
+                },
+                show_guides = true,
+                attach_mode = 'global',
+                close_automatic_events = { 'unsupported' },
+            })
+            vim.api.nvim_create_autocmd('FileType', {
+                pattern = 'aerial',
+                callback = function() vim.wo.number = true end,
+            })
+            vim.keymap.set('n', '<leader>a', '<cmd>AerialToggle<CR>',
+                { desc = 'Toggle document outline (aerial)' })
+        end,
+    },
+
     -- formatter
     'stevearc/conform.nvim',
 
