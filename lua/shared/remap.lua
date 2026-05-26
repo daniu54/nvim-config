@@ -188,6 +188,63 @@ vim.keymap.set("v", "<leader>i", function()
   vim.fn.jobstart({ vim.fn.expand("~/bin/open-url"), text })
 end, { desc = "Open selection in Firefox" })
 
+-- fold level helpers
+local function set_foldlevel_local(level)
+  local cursor_line = vim.fn.line(".")
+  local total       = vim.fn.line("$")
+
+  local start_l = cursor_line
+  for i = cursor_line - 1, 1, -1 do
+    if vim.fn.foldlevel(i) == 0 then break end
+    start_l = i
+  end
+  local end_l = cursor_line
+  for i = cursor_line + 1, total do
+    if vim.fn.foldlevel(i) == 0 then break end
+    end_l = i
+  end
+
+  local saved = vim.fn.getcurpos()
+
+  local i = start_l
+  while i <= end_l do
+    if vim.fn.foldlevel(i) > level and vim.fn.foldclosed(i) == -1 then
+      vim.fn.cursor(i, 1)
+      pcall(vim.cmd, "normal! zc")
+    end
+    local fe = vim.fn.foldclosedend(i)
+    i = (fe > 0) and (fe + 1) or (i + 1)
+  end
+
+  i = start_l
+  while i <= end_l do
+    local fl = vim.fn.foldlevel(i)
+    if fl > 0 and fl <= level and vim.fn.foldclosed(i) ~= -1 then
+      vim.fn.cursor(i, 1)
+      pcall(vim.cmd, "normal! zo")
+    end
+    i = i + 1
+  end
+
+  vim.fn.setpos(".", saved)
+end
+
+vim.keymap.set("n", "<leader>zl", function()
+  local ok, input = pcall(vim.fn.input, "Fold level: ")
+  if not ok or input == "" then return end
+  local level = tonumber(input)
+  if not level then return end
+  vim.wo.foldlevel = level
+end, { desc = "Set fold level (global)" })
+
+vim.keymap.set("n", "<leader>zL", function()
+  local ok, input = pcall(vim.fn.input, "Fold level (local): ")
+  if not ok or input == "" then return end
+  local level = tonumber(input)
+  if not level then return end
+  set_foldlevel_local(level)
+end, { desc = "Set fold level (under cursor)" })
+
 -- Squirrel (.nut) uses C-style line comments; no treesitter grammar available
 vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
     pattern = "*.nut",
