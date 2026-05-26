@@ -190,7 +190,7 @@ end, { desc = "Open selection in Firefox" })
 
 -- fold helpers
 -- zL/zl override scroll-right (zL = half screen, zl = 1 char) — unused with wrap on
--- Both accept: empty → level 1, number → fold level, string → fuzzy term search
+-- Both accept: Enter → level 1, number → fold level, string → fuzzy term search
 
 local function set_foldlevel_range(start_l, end_l, level)
   local saved = vim.fn.getcurpos()
@@ -215,21 +215,56 @@ local function set_foldlevel_range(start_l, end_l, level)
   vim.fn.setpos(".", saved)
 end
 
-local function set_foldlevel_local(level)
-  local cur   = vim.fn.line(".")
+-- True fold-start detection via treesitter foldexpr (returns ">N" for fold headers).
+-- Falls back to foldlevel jump comparison for non-treesitter buffers.
+-- NOTE: fl > prev_fl fails for sibling folds at the same level (e.g. two FL=2 keys
+-- back-to-back), which is why we query the foldexpr directly.
+local function is_fold_start(lnum)
+  local ok, res = pcall(function()
+    vim.v.lnum = lnum
+    return vim.treesitter.foldexpr()
+  end)
+  if ok and type(res) == "string" then return res:sub(1, 1) == ">" end
+  return vim.fn.foldlevel(lnum) > ((lnum > 1) and vim.fn.foldlevel(lnum - 1) or 0)
+end
+
+-- Extent of the fold whose header is at header_line.
+-- Stops at the first sibling (same level + is a fold start) or when foldlevel drops.
+local function get_fold_extent(header_line)
+  local fl    = vim.fn.foldlevel(header_line)
   local total = vim.fn.line("$")
-  local sl, el = cur, cur
-  for i = cur - 1, 1,     -1 do if vim.fn.foldlevel(i) == 0 then break end sl = i end
-  for i = cur + 1, total,  1 do if vim.fn.foldlevel(i) == 0 then break end el = i end
-  set_foldlevel_range(sl, el, level)
+  local el    = header_line
+  for i = header_line + 1, total do
+    local ifl = vim.fn.foldlevel(i)
+    if ifl < fl then break end
+    if ifl == fl and is_fold_start(i) then break end
+    el = i
+  end
+  return header_line, el
+end
+
+-- Walk backward from cursor to find the nearest fold-start line.
+local function find_enclosing_header(cursor_line)
+  for i = cursor_line, 1, -1 do
+    if is_fold_start(i) then return i end
+  end
+  return cursor_line
+end
+
+local function set_foldlevel_local(level)
+  local cur = vim.fn.line(".")
+  if vim.fn.foldlevel(cur) == 0 then return end
+  local header    = find_enclosing_header(cur)
+  local _, end_l  = get_fold_extent(header)
+  set_foldlevel_range(header, end_l, level)
 end
 
 -- fuzzy-smart match: exact > prefix > substring > char-order fuzzy
 local function fold_term_score(pat, word)
   local p, w = pat:lower(), word:lower()
-  if w == p                    then return 4 end
-  if w:sub(1, #p) == p        then return 3 end
-  if w:find(p, 1, true)       then return 2 end
+  if w == p              then return 4 end
+  if w:sub(1, #p) == p  then return 3 end
+  if w:find(p, 1, true) then return 2 end
   local pi = 1
   for si = 1, #w do
     if w:sub(si, si) == p:sub(pi, pi) then
@@ -244,9 +279,7 @@ local function find_fold_by_term(term)
   local total = vim.fn.line("$")
   local best_line, best_score = nil, 0
   for i = 1, total do
-    local fl      = vim.fn.foldlevel(i)
-    local prev_fl = (i > 1) and vim.fn.foldlevel(i - 1) or 0
-    if fl > prev_fl then   -- fold header line
+    if is_fold_start(i) then
       local word  = vim.fn.getline(i):match("^%s*([^:%s]+)") or ""
       local score = fold_term_score(term, word)
       if score > best_score then best_score = score; best_line = i end
@@ -256,11 +289,10 @@ local function find_fold_by_term(term)
 end
 
 local function smart_fold(input, is_global)
-  local s = input:match("^%s*(.-)%s*$")
+  local s     = input:match("^%s*(.-)%s*$")
   local level = tonumber(s)
 
   if s == "" or level then
-    -- numeric mode (default 1)
     local n = level or 1
     if is_global then vim.wo.foldlevel = n
     else              set_foldlevel_local(n)
@@ -268,19 +300,13 @@ local function smart_fold(input, is_global)
     return
   end
 
-  -- term mode: fuzzy-find fold header, fold its contents
   local tl = find_fold_by_term(s)
   if not tl then
     vim.notify("No fold matching: " .. s, vim.log.levels.WARN)
     return
   end
+  local _, fe = get_fold_extent(tl)
   local fl    = vim.fn.foldlevel(tl)
-  local total = vim.fn.line("$")
-  local fe    = tl
-  for i = tl + 1, total do
-    if vim.fn.foldlevel(i) < fl then break end
-    fe = i
-  end
   local label = vim.fn.getline(tl):match("^%s*(.-)%s*$")
   if is_global then
     vim.wo.foldlevel = fl
