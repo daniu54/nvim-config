@@ -9,10 +9,13 @@ vim.api.nvim_create_autocmd("TermOpen", {
   callback = function()
     vim.opt_local.number = true
     vim.opt_local.relativenumber = true
+    -- Override Visual selection colour in terminal windows (see NvimTerminalVisual in colors.lua)
+    local wh = vim.wo.winhighlight
+    vim.wo.winhighlight = (wh ~= "" and wh .. "," or "") .. "Visual:NvimTerminalVisual"
   end,
 })
 
--- Terminal-normal mode (nt) cursor: orange via OSC 12 escape sequence.
+-- Terminal-normal mode (nt) cursor: bright green via OSC 12 escape sequence.
 --
 -- WHY not guicursor: "nt" is not a valid guicursor mode string (E546). Neovim's
 -- cursor shape table has no entry for nt — it reuses SHAPE_IDX_N (normal mode).
@@ -30,8 +33,13 @@ vim.api.nvim_create_autocmd("TermOpen", {
 -- WHY defer on enter: when pressing Ctrl-e (t→nt), the shell may redraw its prompt
 -- via the pty immediately after the mode change, emitting cursor sequences that
 -- override ours. Deferring 80 ms lets that output flush first.
-local function cursor_orange()
-  io.write("\027]12;#ff8800\007")
+--
+-- Cursor colour defined here; Visual selection colour defined in after/plugin/colors.lua
+-- as NvimTerminalVisual (adjust both there to restyle terminal mode appearance).
+local TERMINAL_CURSOR_COLOR = "#39ff14"  -- bright/neon green
+
+local function cursor_terminal()
+  io.write("\027]12;" .. TERMINAL_CURSOR_COLOR .. "\007")
   io.flush()
 end
 local function cursor_reset()
@@ -41,7 +49,7 @@ end
 
 vim.api.nvim_create_autocmd("ModeChanged", {
   pattern = "*:nt",
-  callback = function() vim.defer_fn(cursor_orange, 80) end,
+  callback = function() vim.defer_fn(cursor_terminal, 80) end,
 })
 vim.api.nvim_create_autocmd("ModeChanged", {
   pattern = "nt:*",
