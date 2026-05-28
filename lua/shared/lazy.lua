@@ -112,6 +112,14 @@ require("lazy").setup({
         end,
     },
 
+    -- obsidian notes integration
+    {
+        'epwalsh/obsidian.nvim',
+        version = '*',
+        lazy = false,
+        dependencies = { 'nvim-lua/plenary.nvim' },
+    },
+
     -- formatter
     'stevearc/conform.nvim',
 
