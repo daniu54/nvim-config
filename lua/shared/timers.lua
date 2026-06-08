@@ -56,7 +56,7 @@ local function build_statusline()
         local hl = urgent and "%#TimerUrgent#" or "%#TimerNormal#"
         table.insert(parts, hl .. " ⏱ " .. t.label .. " " .. rem .. " %*")
     end
-    local timer_str = table.concat(parts, "")
+    local timer_str = table.concat(parts, " │ ")
     return " %f %m%=" .. timer_str .. " %l:%c "
 end
 
