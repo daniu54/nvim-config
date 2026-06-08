@@ -16,12 +16,13 @@ local function read_timers()
             local f = io.open(TIMER_DIR .. "/" .. name, "r")
             if f then
                 local end_epoch = tonumber(f:read("l"))
-                local label = f:read("l") or name
+                f:read("l") -- skip duration line
+                local comment = f:read("l") or ""
                 f:close()
                 if end_epoch then
                     table.insert(timers, {
                         id = name,
-                        label = label,
+                        comment = comment,
                         remaining = end_epoch - now,
                         end_epoch = end_epoch,
                     })
@@ -54,7 +55,8 @@ local function build_statusline()
         local rem = fmt_remaining(t.remaining)
         local urgent = t.remaining <= 60
         local hl = urgent and "%#TimerUrgent#" or "%#TimerNormal#"
-        table.insert(parts, hl .. " ⏱ " .. t.label .. " " .. rem .. " %*")
+        local suffix = t.comment ~= "" and (" " .. t.comment) or ""
+        table.insert(parts, hl .. " ⏱ " .. rem .. suffix .. " %*")
     end
     local timer_str = table.concat(parts, " │ ")
     return " %f %m%=" .. timer_str .. " %l:%c "
