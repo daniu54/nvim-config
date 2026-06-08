@@ -321,6 +321,19 @@ end
 
 vim.keymap.set('n', '<C-t>b', pick_tab, { desc = 'Telescope: pick tab' })
 
+-- <C-t><: move current tab one position to the left
+vim.keymap.set('n', '<C-t><', function()
+  local idx = vim.fn.tabpagenr()
+  if idx > 1 then vim.cmd('tabmove ' .. (idx - 2)) end
+end, { desc = 'Move tab left' })
+
+-- <C-t>>: move current tab one position to the right
+vim.keymap.set('n', '<C-t>>', function()
+  local idx = vim.fn.tabpagenr()
+  local last = vim.fn.tabpagenr('$')
+  if idx < last then vim.cmd('tabmove ' .. idx) end
+end, { desc = 'Move tab right' })
+
 -- <C-s>: open terminal in a horizontal split below at context directory
 local function open_term_split()
   local dir = ctx_cwd()

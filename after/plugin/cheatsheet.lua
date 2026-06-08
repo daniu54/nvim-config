@@ -64,6 +64,7 @@ local lines = {
   "   <C-t>v           vsplit: orig buf left,   prev-tab right  ",
   "   <C-t>o           maximize split into new tab (<C-w>T)     ",
   "   <C-t>b           pick tab (telescope)                     ",
+  "   <C-t>< / <C-t>> move tab left / right                    ",
   "   <C-s>            open terminal in horizontal split (below)",
   "   <C-e>            exit terminal mode                       ",
   " ─────────────────────────────────────────────────────────── ",
