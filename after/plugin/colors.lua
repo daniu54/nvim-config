@@ -13,6 +13,10 @@ vim.api.nvim_set_hl(0, "CurSearch", { fg = "#1f1d2e", bg = "#eb6f92", bold = tru
 vim.api.nvim_set_hl(0, "NvimTerminalNVisual", { bg = "#3d2000" })  -- dark orange
 vim.api.nvim_set_hl(0, "NvimTerminalTVisual", { bg = "#0d3a0d" })  -- dark green
 
+-- Netrw dotfiles/dotdirs: shown muted in netrw tree (rose-pine muted)
+vim.api.nvim_set_hl(0, "NetrwDotFile", { fg = "#6e6a86" })           -- dotfiles
+vim.api.nvim_set_hl(0, "NetrwDotDir",  { fg = "#6e6a86", bold = true }) -- dotdirs (bold preserved)
+
 -- Inner nvim ($NVIM set = launched from inside another nvim's terminal buffer):
 -- override Visual + Cursor globally so editing colours are green.
 -- WHY hl group here, not OSC 12: Cursor hl applies to n/i/v modes (normal editing).

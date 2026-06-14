@@ -28,7 +28,7 @@ lua/shared/
   set.lua                   — vim options
   wt_colors.lua             — Windows Terminal background color sync
 after/plugin/
-  colors.lua                — colorscheme (rose-pine)
+  colors.lua                — colorscheme (rose-pine) + all custom highlight groups (Search, terminal visual, NetrwDotfile, etc.)
   conform.lua               — formatter config
   harpoon.lua               — harpoon2 config
   telescope.lua             — telescope config

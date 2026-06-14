@@ -74,6 +74,7 @@ vim.api.nvim_create_autocmd("FileType", {
       vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("t", true, false, true), "m", false)
       vim.schedule(function() vim.cmd("tabprev") end)
     end, { buffer = true, desc = "netrw: open in background tab" })
+
   end,
 })
 
