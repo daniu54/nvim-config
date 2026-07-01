@@ -16,6 +16,7 @@ local lines = {
   "   <leader>a        toggle file structure sidebar (aerial)   ",
   "   gx               open URL under cursor in browser         ",
   "   <leader>gf       open path under cursor in new nvim win   ",
+  "   <leader>yl       copy path:line (visual: path:start-end)  ",
   " ─────────────────────────────────────────────────────────── ",
   "  NETRW                                                      ",
   "   <CR>             dir: descend  /  file: open in new tab   ",

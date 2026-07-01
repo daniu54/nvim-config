@@ -164,6 +164,39 @@ vim.keymap.set("n", "yp", function()
   vim.notify("Copied: " .. path)
 end, { desc = "Copy current file path to clipboard" })
 
+-- <leader>yl: copy current file path with line number(s) to Windows clipboard
+-- normal mode:  /my/file:30
+-- visual mode:  /my/file:30-42  (start-end of selection)
+local function yank_path_with_lines(text)
+  vim.fn.system("clip.exe", text)
+  vim.notify("Copied: " .. text)
+end
+
+vim.keymap.set("n", "<leader>yl", function()
+  local path = vim.fn.expand("%:p")
+  if path == "" then
+    vim.notify("No file", vim.log.levels.WARN)
+    return
+  end
+  yank_path_with_lines(path .. ":" .. vim.fn.line("."))
+end, { desc = "Copy current file path with line number to clipboard" })
+
+vim.keymap.set("v", "<leader>yl", function()
+  local path = vim.fn.expand("%:p")
+  if path == "" then
+    vim.notify("No file", vim.log.levels.WARN)
+    return
+  end
+  local start_line = vim.fn.line("v")
+  local end_line = vim.fn.line(".")
+  if start_line > end_line then
+    start_line, end_line = end_line, start_line
+  end
+  vim.cmd("normal! \27") -- exit visual mode
+  local suffix = start_line == end_line and tostring(start_line) or (start_line .. "-" .. end_line)
+  yank_path_with_lines(path .. ":" .. suffix)
+end, { desc = "Copy current file path with selected line range to clipboard" })
+
 -- !: run a shell command; % is replaced with the current file's full path.
 -- Mirrors the netrw "!" mapping for regular file buffers.
 vim.keymap.set("n", "!", function()
