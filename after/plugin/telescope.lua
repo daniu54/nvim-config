@@ -159,11 +159,11 @@ vim.keymap.set('n', '<leader>fo', builtin.oldfiles, { desc = 'Telescope: recent 
 -- <leader>fb: open buffers
 vim.keymap.set('n', '<leader>fb', builtin.buffers, { desc = 'Telescope: buffers' })
 
--- <C-t>t: open terminal in a new tab at context directory
+-- <C-t>t: open terminal in a vertical split to the side at context directory
 -- works in normal, netrw, and terminal buffers
-local function open_term_tab()
+local function open_term_side()
   local dir = ctx_cwd()
-  vim.cmd('tabnew')
+  vim.cmd('vsplit')
   vim.cmd('lcd ' .. vim.fn.fnameescape(dir))
   vim.cmd('terminal')
   vim.cmd('startinsert')
@@ -215,8 +215,8 @@ local function inner_nvim_terminal_is_active()
   return result:gsub('%s+', '') == 'terminal'
 end
 
--- <C-t>t: open terminal in new tab
-vim.keymap.set('n', '<C-t>t', open_term_tab, { desc = 'Open terminal in new tab at context dir' })
+-- <C-t>t: open terminal in vertical split to the side
+vim.keymap.set('n', '<C-t>t', open_term_side, { desc = 'Open terminal in vertical split at context dir' })
 
 -- <C-t>n: new empty tab
 vim.keymap.set('n', '<C-t>n', function() vim.cmd('tabnew') end, { desc = 'New tab' })
