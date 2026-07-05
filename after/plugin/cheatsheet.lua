@@ -51,6 +51,8 @@ local lines = {
   " ─────────────────────────────────────────────────────────── ",
   "  LSP  (Python/Zig — run :LspEnable or <leader>le first)     ",
   "   gd               go to definition                         ",
+  "   gi               hover docs (press again to focus float,   ",
+  "                    then <CR> on a link to jump to it)        ",
   "   ]d / [d          next / prev diagnostic                   ",
   "   gn / gp          next / prev diagnostic (alt. keys)        ",
   "   ge               expand diagnostic under cursor            ",
