@@ -39,6 +39,14 @@ local function on_attach(_, bufnr)
     -- <leader>K: all diagnostics in location list
     map('<leader>K', vim.diagnostic.setloclist, 'LSP: all diagnostics list')
 
+    -- error-only navigation + expand
+    map('gn', function() vim.diagnostic.jump({ count = 1, severity = vim.diagnostic.severity.ERROR }) end,
+        'LSP: next error')
+    map('gp', function() vim.diagnostic.jump({ count = -1, severity = vim.diagnostic.severity.ERROR }) end,
+        'LSP: prev error')
+    map('ge', function() vim.diagnostic.open_float(nil, { severity = vim.diagnostic.severity.ERROR }) end,
+        'LSP: expand error under cursor')
+
     -- nvim 0.11 sets these by default, listed here for reference:
     -- grn        → rename symbol
     -- gra        → code action
@@ -46,7 +54,7 @@ local function on_attach(_, bufnr)
     -- gri        → implementation
 end
 
-local function lsp_enable()
+local function lsp_enable_python()
     -- Prefer Mason-installed binary, fall back to system PATH
     local mason_bin = vim.fn.stdpath('data') .. '/mason/bin/pyright-langserver'
     local cmd = vim.fn.executable(mason_bin) == 1 and mason_bin or 'pyright-langserver'
@@ -94,8 +102,58 @@ local function lsp_enable()
     vim.notify('LSP (pyright) started\npackages: ' .. venv_msg, vim.log.levels.INFO)
 end
 
+-- Zig LSP (zls). One-time setup: install via :MasonInstall zls
+-- zig itself is managed by anyzig (Windows-side, D:/zig) and is only
+-- resolvable as `zig.exe` (not the shell-only `zig` alias), so we point
+-- zls at it explicitly via the zig_exe_path setting.
+local function lsp_enable_zig()
+    local mason_bin = vim.fn.stdpath('data') .. '/mason/bin/zls'
+    local cmd = vim.fn.executable(mason_bin) == 1 and mason_bin or 'zls'
+
+    if vim.fn.executable(cmd) == 0 then
+        vim.notify('zls not found. Run :MasonInstall zls first.', vim.log.levels.ERROR)
+        return
+    end
+
+    local zig_exe_path = vim.fn.exepath('zig.exe')
+    if zig_exe_path == '' then
+        vim.notify('zig.exe not found on $PATH', vim.log.levels.ERROR)
+        return
+    end
+
+    local root = vim.fs.dirname(
+        vim.fs.find({ 'build.zig', '.git' }, { upward = true })[1]
+    ) or vim.uv.cwd()
+
+    vim.lsp.start({
+        name = 'zls',
+        cmd = { cmd },
+        root_dir = root,
+        capabilities = require('cmp_nvim_lsp').default_capabilities(),
+        on_attach = on_attach,
+        settings = {
+            zls = {
+                zig_exe_path = zig_exe_path,
+            },
+        },
+    })
+
+    vim.notify('LSP (zls) started\nzig: ' .. zig_exe_path, vim.log.levels.INFO)
+end
+
+local function lsp_enable()
+    local ft = vim.bo.filetype
+    if ft == 'python' then
+        lsp_enable_python()
+    elseif ft == 'zig' then
+        lsp_enable_zig()
+    else
+        vim.notify('LspEnable: no LSP configured for filetype "' .. ft .. '"', vim.log.levels.WARN)
+    end
+end
+
 vim.api.nvim_create_user_command('LspEnable', lsp_enable, {
-    desc = 'Start pyright LSP for current buffer (Python)',
+    desc = 'Start LSP for current buffer (Python: pyright, Zig: zls)',
 })
 
-vim.keymap.set('n', '<leader>le', lsp_enable, { desc = 'Enable pyright LSP' })
+vim.keymap.set('n', '<leader>le', lsp_enable, { desc = 'Enable LSP for current buffer' })
