@@ -39,13 +39,10 @@ local function on_attach(_, bufnr)
     -- <leader>K: all diagnostics in location list
     map('<leader>K', vim.diagnostic.setloclist, 'LSP: all diagnostics list')
 
-    -- error-only navigation + expand
-    map('gn', function() vim.diagnostic.jump({ count = 1, severity = vim.diagnostic.severity.ERROR }) end,
-        'LSP: next error')
-    map('gp', function() vim.diagnostic.jump({ count = -1, severity = vim.diagnostic.severity.ERROR }) end,
-        'LSP: prev error')
-    map('ge', function() vim.diagnostic.open_float(nil, { severity = vim.diagnostic.severity.ERROR }) end,
-        'LSP: expand error under cursor')
+    -- diagnostic navigation + expand (mirrors ]d/[d, kept as separate mnemonic keys)
+    map('gn', function() vim.diagnostic.jump({ count = 1 }) end,  'LSP: next diagnostic')
+    map('gp', function() vim.diagnostic.jump({ count = -1 }) end, 'LSP: prev diagnostic')
+    map('ge', function() vim.diagnostic.open_float() end, 'LSP: expand diagnostic under cursor')
 
     -- nvim 0.11 sets these by default, listed here for reference:
     -- grn        → rename symbol
