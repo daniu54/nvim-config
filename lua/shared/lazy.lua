@@ -39,6 +39,9 @@ require("lazy").setup({
     -- completion
     'hrsh7th/nvim-cmp',
 
+    -- AI-based inline completion (typeahead), see after/plugin/minuet.lua
+    { 'milanglacier/minuet-ai.nvim', dependencies = { 'nvim-lua/plenary.nvim' } },
+
     -- comments
     {
         'numToStr/Comment.nvim',

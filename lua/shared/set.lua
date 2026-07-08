@@ -123,6 +123,14 @@ vim.g.editorconfig = false -- disable checking for a .editorconfig file
 vim.opt.swapfile = false
 vim.opt.backup = false
 
+-- Per-directory config opt-in: if a project root contains a `.nvim.lua` (or
+-- `.exrc`/`.nvimrc`), nvim offers to source it on startup. Nvim's trust
+-- database (`:h :trust`) prompts once per file before running it, so an
+-- untrusted/unknown project's `.nvim.lua` never executes silently.
+-- Used to opt a specific project into AI completion (see after/plugin/minuet.lua)
+-- and/or LSP autostart, without turning either on globally.
+vim.opt.exrc = true
+
 -- only works on linux? need correct handling 
 -- vim.opt.undodir = os.getenv("HOME") .. "/.vim/undodir"
 
