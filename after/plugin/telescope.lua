@@ -56,8 +56,15 @@ local tab_utils = require('shared.tab_utils')
 local function select_or_focus_tab(prompt_bufnr)
   local entry = action_state.get_selected_entry()
   local path = entry and (entry.path or entry.filename)
-  if path and tab_utils.focus_if_open(path) then
+  local tab, win = path and tab_utils.find_tab_with_file(path)
+
+  if tab then
+    -- Close the picker first: closing after switching tabs would leave the
+    -- prompt buffer's tab, triggering telescope's BufLeave-close-prompt
+    -- autocmd and clearing the picker state actions.close() depends on.
     actions.close(prompt_bufnr)
+    vim.api.nvim_set_current_tabpage(tab)
+    vim.api.nvim_set_current_win(win)
     return
   end
   actions.select_tab(prompt_bufnr)
