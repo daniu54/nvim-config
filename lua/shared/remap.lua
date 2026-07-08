@@ -38,13 +38,23 @@ vim.keymap.set({"n", "v"}, "<leader>P", [["+p]])
 -- quick search-replace word under cursor
 vim.keymap.set("n", "<leader>s", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gI<Left><Left><Left>]])
 
+-- Resolve the full path of the file/dir under the cursor in a netrw buffer.
+-- expand("<cfile>:p") resolves relative to vim's global cwd, NOT
+-- b:netrw_curdir — wrong whenever netrw is browsing a directory other than
+-- the cwd (e.g. after :Explore <other-dir>). Anchor to netrw_curdir instead.
+local function netrw_cursor_path()
+  local cfile = vim.fn.expand("<cfile>")
+  local dir = vim.b.netrw_curdir or vim.fn.getcwd()
+  return vim.fn.fnamemodify(dir .. "/" .. cfile, ":p")
+end
+
 -- netrw keymaps
 vim.api.nvim_create_autocmd("FileType", {
   pattern = "netrw",
   callback = function()
     -- yp: copy full path of file under cursor to Windows clipboard
     vim.keymap.set("n", "yp", function()
-      local path = vim.fn.expand("<cfile>:p")
+      local path = netrw_cursor_path()
       vim.fn.system("clip.exe", path)
       vim.notify("Copied: " .. path)
     end, { buffer = true })
@@ -53,7 +63,7 @@ vim.api.nvim_create_autocmd("FileType", {
     -- % in the command is replaced with the full path of the cursor file.
     -- Example: `cat %`  →  :!cat '/path/to/file'
     vim.keymap.set("n", "!", function()
-      local file = vim.fn.expand("<cfile>:p")
+      local file = netrw_cursor_path()
       local cmd = vim.fn.input(":! ", "", "shellcmd")
       if cmd == "" then return end
       local expanded = cmd:gsub("%%", vim.fn.shellescape(file))
@@ -61,20 +71,33 @@ vim.api.nvim_create_autocmd("FileType", {
     end, { buffer = true, desc = "Run shell command; % = file under cursor" })
 
     -- o: open file in current window (overrides netrw default hsplit).
-    -- Toggles netrw_browse_split=0 around a synthetic <CR>, then restores it
-    -- to 3 (the default we set in set.lua).
+    -- Toggles netrw_browse_split=0 around a synthetic browse-check, then
+    -- restores it to 3 (the default we set in set.lua). Feeds the <Plug>
+    -- mapping directly (not a literal <CR>) so it doesn't re-enter our own
+    -- <CR> mapping below.
     vim.keymap.set("n", "o", function()
       vim.g.netrw_browse_split = 0
-      vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, false, true), "m", false)
+      vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Plug>NetrwLocalBrowseCheck", true, false, true), "m", false)
       vim.schedule(function() vim.g.netrw_browse_split = 3 end)
     end, { buffer = true, desc = "netrw: open in current window" })
+
+    -- <CR>: open file (default netrw_browse_split=3 behavior: new tab).
+    -- If the file is already open in some tab, just focus that tab instead
+    -- of opening a duplicate. Directories still descend in place as normal.
+    vim.keymap.set("n", "<CR>", function()
+      local tab_utils = require("shared.tab_utils")
+      local path = netrw_cursor_path()
+      if vim.fn.isdirectory(path) == 0 and tab_utils.focus_if_open(path) then return end
+
+      vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Plug>NetrwLocalBrowseCheck", true, false, true), "m", false)
+    end, { buffer = true, desc = "netrw: open file (focus existing tab if already open)" })
 
     -- \: open file in background tab (new tab, stay focused on netrw).
     -- If the file is already open in some tab, just focus that tab instead
     -- of opening a duplicate.
     vim.keymap.set("n", "\\", function()
       local tab_utils = require("shared.tab_utils")
-      local path = vim.fn.expand("<cfile>:p")
+      local path = netrw_cursor_path()
       if tab_utils.focus_if_open(path) then return end
 
       vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("t", true, false, true), "m", false)
