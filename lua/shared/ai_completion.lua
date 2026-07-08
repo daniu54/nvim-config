@@ -12,6 +12,17 @@ M.sensitive_patterns = {
     '%.zshrc%.secrets$', '%.zshrc%.bitwarden$',
 }
 
+-- Every Claude trigger path (manual keymaps, <Right>/<S-Right>, and the
+-- per-project auto-trigger autocmd written by after/plugin/minuet.lua)
+-- checks this first, so a missing/commented-out ANTHROPIC_API_KEY degrades
+-- to "Claude just doesn't respond" instead of an authentication_error round
+-- trip to the API on every keystroke. Checked live (not cached), so filling
+-- the key back in takes effect on the next nvim launch with no re-opt-in.
+function M.claude_key_present()
+    local key = vim.env.ANTHROPIC_API_KEY
+    return type(key) == 'string' and key ~= ''
+end
+
 function M.is_sensitive(bufnr)
     local name = vim.api.nvim_buf_get_name(bufnr):lower()
     for _, pattern in ipairs(M.sensitive_patterns) do
@@ -94,6 +105,9 @@ end
 -- must fall through to a normal right-arrow press when no ghost text is
 -- shown, or every idle keystroke in insert mode would eat the movement.
 local function minuet_action()
+    if not M.claude_key_present() then
+        return nil
+    end
     local ok, virtualtext = pcall(require, 'minuet.virtualtext')
     return ok and virtualtext.action or nil
 end
