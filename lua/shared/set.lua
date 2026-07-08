@@ -157,6 +157,15 @@ vim.opt.ttimeoutlen = 100
 
 vim.opt.title = true
 
+-- don't auto-insert comment leader when pressing Enter after a comment line
+-- (filetype plugins, e.g. zig's, add "r"/"o" back to formatoptions; strip them again)
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "*",
+  callback = function()
+    vim.opt_local.formatoptions:remove({ "r", "o" })
+  end,
+})
+
 -- folding (zc = close fold, zo = open fold)
 -- must be set per-buffer via FileType so treesitter parser is attached first
 vim.opt.foldlevelstart = 99  -- start with all folds open
