@@ -86,4 +86,55 @@ function M.enable_project_wide(marker, block_lines)
     return root
 end
 
+-- <Right> / <S-Right>: accept / request an AI suggestion (Claude or
+-- Copilot, whichever is actually attached in this buffer). Bound globally
+-- and once here, rather than through either plugin's own `keymap` config
+-- table, because unlike the Alt-key bindings (dead keys when idle, so a
+-- silent no-op is harmless), <Right> is real cursor movement — accepting
+-- must fall through to a normal right-arrow press when no ghost text is
+-- shown, or every idle keystroke in insert mode would eat the movement.
+local function minuet_action()
+    local ok, virtualtext = pcall(require, 'minuet.virtualtext')
+    return ok and virtualtext.action or nil
+end
+
+local function copilot_suggestion()
+    local ok, suggestion = pcall(require, 'copilot.suggestion')
+    return ok and suggestion or nil
+end
+
+vim.keymap.set('i', '<Right>', function()
+    local minuet = minuet_action()
+    if minuet and minuet.is_visible() then
+        minuet.accept()
+        return
+    end
+
+    local copilot = copilot_suggestion()
+    if copilot and copilot.is_visible() then
+        copilot.accept()
+        return
+    end
+
+    -- no suggestion from either engine: behave like a plain right-arrow.
+    -- 'n' (noremap) so this doesn't loop back into this same mapping.
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<Right>', true, false, true), 'n', true)
+end, { desc = 'Accept AI suggestion (Claude/Copilot), else move cursor right' })
+
+vim.keymap.set('i', '<S-Right>', function()
+    -- Calling both is safe even when only one engine is enabled for this
+    -- project/buffer: Copilot's request path checks its own should_attach
+    -- rules and no-ops (and never starts its server) if this buffer never
+    -- opted in; Minuet's request always works, same as its existing <A-]>.
+    local minuet = minuet_action()
+    if minuet then
+        pcall(minuet.next)
+    end
+
+    local copilot = copilot_suggestion()
+    if copilot then
+        pcall(copilot.next)
+    end
+end, { desc = 'Request/cycle an AI suggestion (Claude and/or Copilot)' })
+
 return M
