@@ -48,12 +48,27 @@ vim.api.nvim_create_autocmd('User', {
 
 local builtin = require('telescope.builtin')
 local actions = require('telescope.actions')
+local action_state = require('telescope.actions.state')
+local tab_utils = require('shared.tab_utils')
 
--- Wrap opts to make <CR> open the selected file in a new tab.
+-- <CR>: if the selected file is already open in some tab, just focus that
+-- tab/window. Otherwise fall through to the default "open in new tab".
+local function select_or_focus_tab(prompt_bufnr)
+  local entry = action_state.get_selected_entry()
+  local path = entry and (entry.path or entry.filename)
+  if path and tab_utils.focus_if_open(path) then
+    actions.close(prompt_bufnr)
+    return
+  end
+  actions.select_tab(prompt_bufnr)
+end
+
+-- Wrap opts to make <CR> open the selected file in a new tab (or focus its
+-- existing tab, if already open).
 local function in_tab(opts)
   opts = opts or {}
   opts.attach_mappings = function(_, map)
-    map({ 'i', 'n' }, '<CR>', actions.select_tab)
+    map({ 'i', 'n' }, '<CR>', select_or_focus_tab)
     return true
   end
   return opts

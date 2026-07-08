@@ -70,7 +70,13 @@ vim.api.nvim_create_autocmd("FileType", {
     end, { buffer = true, desc = "netrw: open in current window" })
 
     -- \: open file in background tab (new tab, stay focused on netrw).
+    -- If the file is already open in some tab, just focus that tab instead
+    -- of opening a duplicate.
     vim.keymap.set("n", "\\", function()
+      local tab_utils = require("shared.tab_utils")
+      local path = vim.fn.expand("<cfile>:p")
+      if tab_utils.focus_if_open(path) then return end
+
       vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("t", true, false, true), "m", false)
       vim.schedule(function() vim.cmd("tabprev") end)
     end, { buffer = true, desc = "netrw: open in background tab" })
