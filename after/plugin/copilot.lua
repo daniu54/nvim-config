@@ -57,6 +57,17 @@ local function enable_copilot_project_wide()
         '    end,',
         '})',
     })
+
+    -- Same reason as Minuet's equivalent block (after/plugin/minuet.lua): the
+    -- FileType autocmd above only fires for buffers opened from now on — the
+    -- buffer you pressed <leader>lc in already had its FileType event fire
+    -- before .nvim.lua existed, so without this it stays un-attached until
+    -- you switch away and back.
+    if vim.bo.buflisted and not ai.is_sensitive(0) then
+        require('copilot.command').attach({ force = true, bufnr = 0 })
+        vim.b.copilot_suggestion_auto_trigger = true
+    end
+
     vim.notify('Copilot enabled project-wide for ' .. root, vim.log.levels.INFO)
 end
 

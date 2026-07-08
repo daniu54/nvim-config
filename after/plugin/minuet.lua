@@ -107,6 +107,14 @@ local function enable_claude_project_wide()
         '    end,',
         '})',
     })
+    -- The FileType autocmd above only fires for buffers opened from now on —
+    -- the buffer you're standing in already had its FileType event fire
+    -- before .nvim.lua existed, so without this it stays un-attached (no
+    -- ghost text, no auto-trigger) until you switch away and back.
+    if ai.claude_key_present() and vim.bo.buflisted and not ai.is_sensitive(0) then
+        vim.cmd('Minuet virtualtext enable')
+    end
+
     if ai.claude_key_present() then
         vim.notify('Claude AI completion enabled project-wide for ' .. root, vim.log.levels.INFO)
     else
