@@ -54,7 +54,10 @@ require("lazy").setup({
         branch = 'main',
         dependencies = { 'zbirenbaum/copilot.lua', 'nvim-lua/plenary.nvim' },
         cmd = { 'CopilotChat', 'CopilotChatExplain', 'CopilotChatReview', 'CopilotChatFix',
-                'CopilotChatOptimize', 'CopilotChatDocs', 'CopilotChatTests', 'CopilotChatCommit' },
+                'CopilotChatOptimize', 'CopilotChatDocs', 'CopilotChatTests', 'CopilotChatCommit',
+                'CopilotChatModels', 'CopilotChatPrompts', 'CopilotChatToggle', 'CopilotChatOpen',
+                'CopilotChatClose', 'CopilotChatStop', 'CopilotChatReset', 'CopilotChatSave',
+                'CopilotChatLoad' },
         opts = {},
     },
 
