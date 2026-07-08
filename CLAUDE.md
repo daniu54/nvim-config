@@ -76,6 +76,27 @@ here via the Student Developer Pack.)
   This is the closest equivalent to VS Code's inline chat (Ctrl+I) available
   in Neovim — Copilot's own completion plugin has no such feature, hence the
   separate plugin. Lazy-loaded on first `:CopilotChat*` use.
+- **Copilot Free/Student "auto model" patch (`patches/copilotchat-auto-model.patch`).**
+  GitHub restricted Copilot Free/Student plans to "auto" model selection only
+  (2026-06-24). Upstream CopilotChat.nvim (as pinned in `lazy-lock.json`)
+  can't fully drive that: the model list is filtered to
+  `model_picker_enabled` (false for every real model on these accounts, so
+  only a synthetic "Auto" entry survives), and the model "auto" resolves to
+  server-side needs a `Copilot-Session-Token` header the client never
+  captures — without it every chat request 400s with `model_not_supported`,
+  even inline ghost-text completion works fine. Confirmed via GitHub search
+  this is a known, actively-being-worked-on upstream bug (unmerged PRs
+  [#1575](https://github.com/CopilotC-Nvim/CopilotChat.nvim/pull/1575) and
+  [#1577](https://github.com/CopilotC-Nvim/CopilotChat.nvim/pull/1577); a
+  third, [#1578](https://github.com/CopilotC-Nvim/CopilotChat.nvim/pull/1578),
+  was closed unmerged with real correctness issues per review — not used
+  here). The patch combines #1577's model-list/fallback fix with #1575's
+  session-token forwarding, applied automatically via the plugin spec's
+  `build` step in `lua/shared/lazy.lua` (idempotent — skips if already
+  applied, warns instead of erroring if upstream changes enough that it no
+  longer applies cleanly). Verified end-to-end with real chat requests
+  against a live Student-plan account. Safe to delete once this lands
+  upstream and gets pulled in by a `lazy-lock.json` bump.
 
 See `:Cheatsheet` (`<leader>?`) for the full keymap list.
 

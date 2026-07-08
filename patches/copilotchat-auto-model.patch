@@ -1,0 +1,74 @@
+diff --git a/lua/CopilotChat/client.lua b/lua/CopilotChat/client.lua
+index 7bbc65d..4e14387 100644
+--- a/lua/CopilotChat/client.lua
++++ b/lua/CopilotChat/client.lua
+@@ -319,14 +319,17 @@ function Client:ask(opts)
+     error('Provider not found: ' .. provider_name)
+   end
+ 
++  local resolved_headers = nil
+   if provider.resolve_model then
+     local headers = self:authenticate(provider_name)
+-    local resolved_model = provider.resolve_model(headers, opts.model)
++    local resolved_model, extra_headers = provider.resolve_model(headers, opts.model)
++    resolved_headers = extra_headers
+     opts.model = resolved_model
+-    model_config = models[opts.model]
+-    if not model_config then
+-      error('Resolved model not found: ' .. opts.model)
+-    end
++    -- The resolved model may not be present in the models cache when
++    -- model_picker_enabled is false for all API models (e.g. restricted accounts).
++    -- Fall back to the original config (e.g. from the 'auto' entry) so the
++    -- request can still be sent with the correct model id.
++    model_config = models[opts.model] or model_config
+   end
+ 
+   local options = {
+@@ -538,6 +541,10 @@ function Client:ask(opts)
+ 
+   local headers = self:authenticate(provider_name)
+ 
++  if resolved_headers then
++    headers = vim.tbl_extend('force', headers, resolved_headers)
++  end
++
+   local request, extra_headers =
+     provider.prepare_input(generate_ask_request(opts.system_prompt, history, generated_messages), options)
+ 
+diff --git a/lua/CopilotChat/config/providers.lua b/lua/CopilotChat/config/providers.lua
+index ea5eea7..d36fbe8 100644
+--- a/lua/CopilotChat/config/providers.lua
++++ b/lua/CopilotChat/config/providers.lua
+@@ -635,11 +635,18 @@ M.copilot = {
+       error(err)
+     end
+ 
++    -- Get all chat models, preferring those with model_picker_enabled.
++    -- Fall back to all chat models if none are picker-enabled (e.g. restricted accounts).
++    local all_chat_data = vim.tbl_filter(function(model)
++      return model.capabilities and model.capabilities.type == 'chat'
++    end, response.body.data)
++
++    local picker_enabled_data = vim.tbl_filter(function(model)
++      return model.model_picker_enabled
++    end, all_chat_data)
++
+     local models = vim
+-      .iter(response.body.data)
+-      :filter(function(model)
+-        return model.capabilities.type == 'chat' and model.model_picker_enabled
+-      end)
++      .iter(#picker_enabled_data > 0 and picker_enabled_data or all_chat_data)
+       :map(function(model)
+         local supported_endpoints = model.supported_endpoints or {}
+         -- Pre-compute whether this model uses the Responses API
+@@ -714,7 +721,7 @@ M.copilot = {
+       error(err)
+     end
+ 
+-    return response.body.selected_model
++    return response.body.selected_model, { ['Copilot-Session-Token'] = response.body.session_token }
+   end,
+ 
+   prepare_input = function(inputs, opts)
