@@ -79,3 +79,53 @@ vim.api.nvim_create_autocmd({ 'BufEnter', 'BufWinEnter' }, {
         end
     end,
 })
+
+-- <leader>la: opt the current project into AI completion, project-wide, without
+-- having to hand-write a `.nvim.lua` yourself.
+--
+-- Finds the project root (nearest `.git` upward from the current buffer, falling
+-- back to cwd), writes a `.nvim.lua` there (only if one doesn't already exist) that
+-- enables Minuet virtualtext for every filetype, trusts it via `vim.secure.trust`
+-- (so you don't get an exrc prompt on next startup either), and sources it
+-- immediately so AI completion turns on right away in the current session too.
+-- The sensitive-file blocklist above still applies on top of this.
+local function enable_ai_project_wide()
+    local git_dir = vim.fs.find('.git', {
+        upward = true,
+        path = vim.fs.dirname(vim.api.nvim_buf_get_name(0)),
+    })[1]
+    local root = git_dir and vim.fs.dirname(git_dir) or vim.uv.cwd()
+    local path = root .. '/.nvim.lua'
+
+    if vim.fn.filereadable(path) == 0 then
+        local contents = {
+            '-- created by <leader>la / :EnableProjectAi — opts this project into',
+            '-- Claude-based inline completion, project-wide.',
+            '-- Narrow `pattern` to specific filetypes if you don\'t want it everywhere.',
+            '-- Do NOT commit this file to the project\'s own repo — add it to .gitignore.',
+            "vim.api.nvim_create_autocmd('FileType', {",
+            "    pattern = '*',",
+            "    callback = function() vim.cmd('Minuet virtualtext enable') end,",
+            '})',
+            '',
+        }
+        vim.fn.writefile(contents, path)
+        vim.notify('Created ' .. path .. ' — remember to add ".nvim.lua" to .gitignore', vim.log.levels.WARN)
+    end
+
+    -- vim.secure.trust with action='allow' hashes a buffer's live content, not the
+    -- file on disk, so load it into a scratch buffer just to compute/store the hash.
+    local trust_buf = vim.fn.bufadd(path)
+    vim.fn.bufload(trust_buf)
+    vim.secure.trust({ action = 'allow', bufnr = trust_buf })
+    vim.api.nvim_buf_delete(trust_buf, { force = true })
+
+    vim.cmd('luafile ' .. vim.fn.fnameescape(path))
+    vim.notify('AI completion enabled project-wide for ' .. root, vim.log.levels.INFO)
+end
+
+vim.api.nvim_create_user_command('EnableProjectAi', enable_ai_project_wide, {
+    desc = 'Create/trust/source .nvim.lua to enable AI completion for this project',
+})
+
+vim.keymap.set('n', '<leader>la', enable_ai_project_wide, { desc = 'Enable AI completion for this project' })
