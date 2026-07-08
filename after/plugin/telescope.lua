@@ -56,7 +56,10 @@ local tab_utils = require('shared.tab_utils')
 local function select_or_focus_tab(prompt_bufnr)
   local entry = action_state.get_selected_entry()
   local path = entry and (entry.path or entry.filename)
-  local tab, win = path and tab_utils.find_tab_with_file(path)
+  local tab, win
+  if path then
+    tab, win = tab_utils.find_tab_with_file(path)
+  end
 
   if tab then
     -- Close the picker first: closing after switching tabs would leave the
