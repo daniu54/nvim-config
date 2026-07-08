@@ -2,3 +2,4 @@
 plugin/packer_compiled.lua
 .netrwhist
 lazy-lock.json
+.cltask-prompt*.md
