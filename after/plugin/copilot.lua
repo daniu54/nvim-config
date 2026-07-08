@@ -24,10 +24,7 @@
 -- (`nvm install 22`); lua/shared/copilot.lua points straight at that binary.
 local ai = require('shared.copilot')
 
--- <leader>la / <leader>lc: opt the current project into Copilot, project-wide.
--- Both bindings do the same thing — <leader>la so it reads as "the" AI-
--- completion toggle now that Copilot is the only engine, <leader>lc kept for
--- existing muscle memory (it's the Copilot-specific mnemonic).
+-- <leader>la: opt the current project into Copilot, project-wide.
 --
 -- Copilot's client only attaches to buffers that pass its `filetypes`/
 -- `should_attach` check — and force-attaching (bypassing that check) is
@@ -53,9 +50,9 @@ local function enable_copilot_project_wide()
     })
 
     -- The FileType autocmd above only fires for buffers opened from now on —
-    -- the buffer you pressed <leader>la/<leader>lc in already had its
-    -- FileType event fire before .nvim.lua existed, so without this it stays
-    -- un-attached until you switch away and back.
+    -- the buffer you pressed <leader>la in already had its FileType event
+    -- fire before .nvim.lua existed, so without this it stays un-attached
+    -- until you switch away and back.
     if vim.bo.buflisted and not ai.is_sensitive(0) then
         require('copilot.command').attach({ force = true, bufnr = 0 })
         vim.b.copilot_suggestion_auto_trigger = true
@@ -69,4 +66,3 @@ vim.api.nvim_create_user_command('EnableProjectCopilot', enable_copilot_project_
 })
 
 vim.keymap.set('n', '<leader>la', enable_copilot_project_wide, { desc = 'Enable Copilot for this project' })
-vim.keymap.set('n', '<leader>lc', enable_copilot_project_wide, { desc = 'Enable Copilot for this project' })

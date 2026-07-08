@@ -64,7 +64,7 @@ local lines = {
   "   gri              implementation  (nvim 0.11 default)      ",
   " ─────────────────────────────────────────────────────────── ",
   "  AI COMPLETION  (Copilot, off by default)                   ",
-  "   <leader>la / <leader>lc  enable Copilot, project-wide      ",
+  "   <leader>la          enable Copilot, project-wide           ",
   "                    (writes/trusts/sources .nvim.lua)         ",
   "   :Copilot auth    sign in (one-time; opens URL + code)      ",
   "   :Copilot status  confirm signed in                         ",

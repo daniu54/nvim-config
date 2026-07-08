@@ -35,7 +35,7 @@ after/plugin/
   telescope.lua             — telescope config
   cmp.lua                   — nvim-cmp completion (buffer + path + lsp)
   lsp.lua                   — on-demand pyright LSP via :LspEnable
-  copilot.lua               — Copilot inline completion, opt-in per project (<leader>la / <leader>lc)
+  copilot.lua               — Copilot inline completion, opt-in per project (<leader>la)
   copilot_chat.lua          — Copilot Chat region-refactor keymap (<leader>lr)
 plugin/
   packer_compiled.lua       — gitignored, stale packer artifact
@@ -54,7 +54,7 @@ here via the Student Developer Pack.)
   `filetypes = { ['*'] = false }` and never calls `require('copilot').setup()`
   until a project opts in — so a random repo you `cd` into never talks to
   Copilot's servers.
-- **Opt-in is per-project, not per-session.** `<leader>la` or `<leader>lc`
+- **Opt-in is per-project, not per-session.** `<leader>la`
   (`after/plugin/copilot.lua`) writes/trusts/sources a `.nvim.lua` at the
   project root (via `exrc`, `lua/shared/set.lua`) that force-attaches Copilot
   for every filetype in that project, from then on, in this session and

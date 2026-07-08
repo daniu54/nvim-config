@@ -31,9 +31,9 @@ end
 
 -- require('copilot').setup() starts the copilot-language-server Node process
 -- immediately, even for filetypes it will never attach to — so it must NOT
--- run at nvim startup, only once a project actually opts in (<leader>la /
--- <leader>lc), otherwise every nvim instance pays that cost regardless of
--- the "no AI by default" design.
+-- run at nvim startup, only once a project actually opts in (<leader>la),
+-- otherwise every nvim instance pays that cost regardless of the "no AI by
+-- default" design.
 local ready = false
 
 local function nvm_node()
@@ -74,6 +74,13 @@ end
 -- trusts and immediately sources the file so the change applies to the running
 -- session too, not just future nvim launches from that directory.
 --
+-- If a block for this marker already exists but its content has drifted from
+-- `block_lines` (e.g. a module referenced inside it got renamed in a later
+-- refactor — this bit us once: lua/shared/ai_completion.lua became
+-- lua/shared/copilot.lua and every project's already-written .nvim.lua kept
+-- calling require('shared.ai_completion'), erroring on every matching
+-- FileType), the stale block is replaced in place rather than left broken.
+--
 -- Returns the project root path.
 function M.enable_project_wide(marker, block_lines)
     local git_dir = vim.fs.find('.git', {
@@ -88,15 +95,34 @@ function M.enable_project_wide(marker, block_lines)
         lines = vim.fn.readfile(path)
     end
 
-    local already_present = false
-    for _, line in ipairs(lines) do
+    local marker_idx = nil
+    for i, line in ipairs(lines) do
         if line:find(marker, 1, true) then
-            already_present = true
+            marker_idx = i
             break
         end
     end
 
-    if not already_present then
+    local changed = false
+
+    if marker_idx then
+        -- The block written under a marker is always the contiguous run of
+        -- lines right after it, up to the next blank line (enable_project_wide
+        -- always separates entries with a blank line) or end of file.
+        local block_end = marker_idx
+        while lines[block_end + 1] and lines[block_end + 1] ~= '' do
+            block_end = block_end + 1
+        end
+        local current_block = vim.list_slice(lines, marker_idx + 1, block_end)
+        if not vim.deep_equal(current_block, block_lines) then
+            local new_lines = vim.list_slice(lines, 1, marker_idx)
+            vim.list_extend(new_lines, block_lines)
+            vim.list_extend(new_lines, vim.list_slice(lines, block_end + 1, #lines))
+            lines = new_lines
+            changed = true
+            vim.notify('Refreshed stale AI-completion block in ' .. path, vim.log.levels.WARN)
+        end
+    else
         if #lines == 0 then
             table.insert(lines, '-- Opts this project into AI completion.')
             table.insert(lines, '-- Do NOT commit this file to the project\'s own repo — add ".nvim.lua" to .gitignore.')
@@ -106,8 +132,12 @@ function M.enable_project_wide(marker, block_lines)
         for _, line in ipairs(block_lines) do
             table.insert(lines, line)
         end
-        vim.fn.writefile(lines, path)
+        changed = true
         vim.notify('Updated ' .. path .. ' — remember ".nvim.lua" is in .gitignore', vim.log.levels.WARN)
+    end
+
+    if changed then
+        vim.fn.writefile(lines, path)
     end
 
     -- vim.secure.trust with action='allow' hashes a buffer's live content, not
