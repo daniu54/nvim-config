@@ -58,7 +58,15 @@ require("lazy").setup({
                 'CopilotChatModels', 'CopilotChatPrompts', 'CopilotChatToggle', 'CopilotChatOpen',
                 'CopilotChatClose', 'CopilotChatStop', 'CopilotChatReset', 'CopilotChatSave',
                 'CopilotChatLoad' },
-        opts = {},
+        opts = {
+            -- The plugin's built-in default is a pinned model id (e.g.
+            -- 'gpt-5-mini') that Copilot Free/Student accounts can't select
+            -- directly — only 'auto' is available to them (see the patch
+            -- note below). 'auto' works for every account tier, so use it
+            -- as the default rather than something that 400s on restricted
+            -- plans.
+            model = 'auto',
+        },
         -- GitHub restricted Copilot Free/Student plans to "auto" model
         -- selection only (2026-06-24), which upstream CopilotChat.nvim
         -- (as of the pinned commit) can't fully drive yet: `auto` fails
