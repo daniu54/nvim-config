@@ -127,7 +127,7 @@ vim.opt.backup = false
 -- `.exrc`/`.nvimrc`), nvim offers to source it on startup. Nvim's trust
 -- database (`:h :trust`) prompts once per file before running it, so an
 -- untrusted/unknown project's `.nvim.lua` never executes silently.
--- Used to opt a specific project into AI completion (see after/plugin/minuet.lua)
+-- Used to opt a specific project into AI completion (see after/plugin/copilot.lua)
 -- and/or LSP autostart, without turning either on globally.
 vim.opt.exrc = true
 

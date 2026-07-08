@@ -1,11 +1,10 @@
 -- AI-based inline completion (typeahead) via GitHub Copilot, using
 -- copilot.lua: https://github.com/zbirenbaum/copilot.lua
 --
--- See after/plugin/minuet.lua for the Claude equivalent — both share the
--- opt-in-per-directory infrastructure in lua/shared/ai_completion.lua and the
--- same accept/next/prev/dismiss keymaps. Don't enable both engines for the
--- same project: whichever plugin's after/plugin/*.lua runs last wins the
--- keymap (alphabetically, this file loads before minuet.lua).
+-- See ../../CLAUDE.md ("AI completion (Copilot)") for the overall approach:
+-- opt-in per project via a trusted `.nvim.lua`, nothing sent anywhere by
+-- default. See after/plugin/copilot_chat.lua for the region-refactor feature
+-- built on top of this same bootstrap.
 --
 -- No env var / API key file needed here. Auth is GitHub OAuth device-code
 -- flow, requested from inside nvim:
@@ -15,33 +14,28 @@
 --      Developer Pack -> Copilot), enter the code.
 --   3. `:Copilot status` to confirm.
 -- The resulting token is cached under ~/.config/github-copilot/ automatically
--- — nothing to type into a secrets file yourself.
+-- — nothing to type into a secrets file yourself (see ~/.zshrc.secrets).
 --
 -- Node.js >= 22 is required to run the bundled copilot-language-server. In
 -- this environment `node` is a zsh alias to Windows node.exe (see
 -- ~/.claude/CLAUDE.md) — that alias only exists in an interactive shell, so
 -- nvim's job spawner can't see it, and the apt-installed /usr/bin/node is only
 -- v18. A native Linux Node 22 was installed via nvm for this
--- (`nvm install 22`); lua/shared/copilot_ai.lua points straight at that binary.
---
--- IMPORTANT: require('copilot').setup() starts the copilot-language-server
--- Node process immediately, even for filetypes it will never attach to. It
--- must NOT be called here at file-load time (that would mean every nvim
--- instance spawns a Node process on startup, opted in or not) — it's called
--- lazily, once, via require('shared.copilot_ai').ensure_ready() from inside
--- the opt-in path below.
-local ai = require('shared.ai_completion')
+-- (`nvm install 22`); lua/shared/copilot.lua points straight at that binary.
+local ai = require('shared.copilot')
 
--- <leader>lc: opt the current project into Copilot, project-wide.
+-- <leader>la / <leader>lc: opt the current project into Copilot, project-wide.
+-- Both bindings do the same thing — <leader>la so it reads as "the" AI-
+-- completion toggle now that Copilot is the only engine, <leader>lc kept for
+-- existing muscle memory (it's the Copilot-specific mnemonic).
 --
--- Unlike Minuet (which can force-disable an already-attached buffer),
 -- Copilot's client only attaches to buffers that pass its `filetypes`/
 -- `should_attach` check — and force-attaching (bypassing that check) is
 -- exactly how `filetypes['*'] = false` gets overridden per project. So the
 -- sensitive-file check has to happen *before* attaching, in the same FileType
 -- callback that opts a project in, rather than as a separate disable pass.
 local function enable_copilot_project_wide()
-    require('shared.copilot_ai').ensure_ready()
+    ai.ensure_ready()
 
     local root = ai.enable_project_wide('-- copilot project-wide enable', {
         "vim.api.nvim_create_augroup('ai_completion_copilot', { clear = true })",
@@ -50,19 +44,18 @@ local function enable_copilot_project_wide()
         "    pattern = '*',",
         "    callback = function(args)",
         "        if not vim.bo[args.buf].buflisted then return end",
-        "        if require('shared.ai_completion').is_sensitive(args.buf) then return end",
-        "        require('shared.copilot_ai').ensure_ready()",
+        "        if require('shared.copilot').is_sensitive(args.buf) then return end",
+        "        require('shared.copilot').ensure_ready()",
         "        require('copilot.command').attach({ force = true, bufnr = args.buf })",
         "        vim.b.copilot_suggestion_auto_trigger = true",
         '    end,',
         '})',
     })
 
-    -- Same reason as Minuet's equivalent block (after/plugin/minuet.lua): the
-    -- FileType autocmd above only fires for buffers opened from now on — the
-    -- buffer you pressed <leader>lc in already had its FileType event fire
-    -- before .nvim.lua existed, so without this it stays un-attached until
-    -- you switch away and back.
+    -- The FileType autocmd above only fires for buffers opened from now on —
+    -- the buffer you pressed <leader>la/<leader>lc in already had its
+    -- FileType event fire before .nvim.lua existed, so without this it stays
+    -- un-attached until you switch away and back.
     if vim.bo.buflisted and not ai.is_sensitive(0) then
         require('copilot.command').attach({ force = true, bufnr = 0 })
         vim.b.copilot_suggestion_auto_trigger = true
@@ -75,4 +68,5 @@ vim.api.nvim_create_user_command('EnableProjectCopilot', enable_copilot_project_
     desc = 'Create/trust/source .nvim.lua to enable Copilot for this project',
 })
 
+vim.keymap.set('n', '<leader>la', enable_copilot_project_wide, { desc = 'Enable Copilot for this project' })
 vim.keymap.set('n', '<leader>lc', enable_copilot_project_wide, { desc = 'Enable Copilot for this project' })

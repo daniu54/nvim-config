@@ -39,14 +39,24 @@ require("lazy").setup({
     -- completion
     'hrsh7th/nvim-cmp',
 
-    -- AI-based inline completion (typeahead), see after/plugin/minuet.lua
-    { 'milanglacier/minuet-ai.nvim', dependencies = { 'nvim-lua/plenary.nvim' } },
-
     -- AI-based inline completion via GitHub Copilot, see after/plugin/copilot.lua
     -- (loaded eagerly, not lazy on the :Copilot cmd, since after/plugin/copilot.lua
     -- calls require('copilot').setup() unconditionally at startup like the other
     -- completion plugins in this config)
     'zbirenbaum/copilot.lua',
+
+    -- Copilot Chat: region-refactor / ask-Copilot-a-question, see
+    -- after/plugin/copilot_chat.lua. Lazy-loaded on its own commands, unlike
+    -- copilot.lua above, since it's an occasional-use feature rather than
+    -- always-on completion.
+    {
+        'CopilotC-Nvim/CopilotChat.nvim',
+        branch = 'main',
+        dependencies = { 'zbirenbaum/copilot.lua', 'nvim-lua/plenary.nvim' },
+        cmd = { 'CopilotChat', 'CopilotChatExplain', 'CopilotChatReview', 'CopilotChatFix',
+                'CopilotChatOptimize', 'CopilotChatDocs', 'CopilotChatTests', 'CopilotChatCommit' },
+        opts = {},
+    },
 
     -- comments
     {
