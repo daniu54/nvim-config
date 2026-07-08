@@ -42,6 +42,12 @@ require("lazy").setup({
     -- AI-based inline completion (typeahead), see after/plugin/minuet.lua
     { 'milanglacier/minuet-ai.nvim', dependencies = { 'nvim-lua/plenary.nvim' } },
 
+    -- AI-based inline completion via GitHub Copilot, see after/plugin/copilot.lua
+    -- (loaded eagerly, not lazy on the :Copilot cmd, since after/plugin/copilot.lua
+    -- calls require('copilot').setup() unconditionally at startup like the other
+    -- completion plugins in this config)
+    'zbirenbaum/copilot.lua',
+
     -- comments
     {
         'numToStr/Comment.nvim',

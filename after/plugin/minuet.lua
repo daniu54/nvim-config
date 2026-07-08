@@ -1,6 +1,12 @@
 -- AI-based inline completion (typeahead), similar to GitHub Copilot, powered by
 -- Claude (Anthropic) via minuet-ai.nvim: https://github.com/milanglacier/minuet-ai.nvim
 --
+-- See after/plugin/copilot.lua for the GitHub Copilot equivalent — both share
+-- the opt-in-per-directory infrastructure in lua/shared/ai_completion.lua.
+-- Don't enable both engines for the same project: they share the same
+-- keymaps below (deliberately, so muscle memory transfers), so whichever
+-- plugin's after/plugin/*.lua runs last wins the keymap.
+--
 -- Env vars required:
 --   ANTHROPIC_API_KEY  — your Claude API key, from https://console.anthropic.com/settings/keys
 --                         Stored in ~/.zshrc.secrets (gitignored/untracked, mode 600,
@@ -15,30 +21,24 @@
 -- DEFAULT STATE: no AI, anywhere. `virtualtext.auto_trigger_ft = {}` means nothing
 -- auto-suggests in any filetype/directory unless explicitly turned on (see below).
 --
--- OPT-IN PER DIRECTORY:
--- `exrc` is enabled (lua/shared/set.lua), so a project can opt itself in by adding a
--- `.nvim.lua` file at its root, e.g.:
---
---   -- .nvim.lua (project root, NOT committed to the project's own repo)
---   vim.api.nvim_create_autocmd('FileType', {
---     pattern = { 'python', 'lua', 'typescript' },
---     callback = function() vim.cmd('Minuet virtualtext enable') end,
---   })
---   -- same mechanism works for the on-demand LSP setup in after/plugin/lsp.lua:
---   -- vim.cmd('LspEnable')
---
--- The first time nvim opens a directory containing such a file, it prompts to trust
--- it (:h :trust) before running anything — so an unfamiliar project's `.nvim.lua`
--- never executes silently. Re-run `:trust` if you edit a `.nvim.lua` you already trust.
+-- OPT-IN PER DIRECTORY: press <leader>la (or :EnableProjectAi) in the project you
+-- want this enabled for. That writes/trusts/sources a `.nvim.lua` at the project
+-- root (see lua/shared/ai_completion.lua) which runs `Minuet virtualtext enable`
+-- for every filetype from then on, in this session and future ones. `exrc` is
+-- enabled (lua/shared/set.lua) and nvim prompts to trust an unfamiliar project's
+-- `.nvim.lua` before running it, so this never happens silently for a repo you
+-- didn't opt in yourself.
 --
 -- Even without opting a directory in, completions can always be requested manually
 -- with the `next`/`prev` keymaps below (they trigger a completion request even when
 -- the current filetype isn't auto-triggering).
 --
--- SENSITIVE FILES: regardless of directory opt-in, buffers matching the patterns
--- below always have virtualtext force-disabled, so their contents are never sent to
--- the API as completion context. Extend `sensitive_patterns` for anything else you
--- keep in plaintext (e.g. this config's own ~/.zshrc.secrets-style files).
+-- SENSITIVE FILES: regardless of directory opt-in, buffers matching
+-- shared.ai_completion's `sensitive_patterns` always have virtualtext
+-- force-disabled, so their contents are never sent to the API as completion
+-- context.
+local ai = require('shared.ai_completion')
+
 require('minuet').setup({
     provider = 'claude',
     virtualtext = {
@@ -62,70 +62,31 @@ require('minuet').setup({
     },
 })
 
-local sensitive_patterns = {
-    '%.env$', '%.env%.', 'secret', 'credential', 'id_rsa', 'id_ed25519',
-    '%.pem$', '%.key$', '%.p12$', '%.pfx$', '%.kdbx$', '%.netrc$', '_history$',
-    '%.zshrc%.secrets$', '%.zshrc%.bitwarden$',
-}
-
 vim.api.nvim_create_autocmd({ 'BufEnter', 'BufWinEnter' }, {
     callback = function(args)
-        local name = vim.api.nvim_buf_get_name(args.buf):lower()
-        for _, pattern in ipairs(sensitive_patterns) do
-            if name:match(pattern) then
-                vim.cmd('Minuet virtualtext disable')
-                return
-            end
+        if ai.is_sensitive(args.buf) then
+            vim.cmd('Minuet virtualtext disable')
         end
     end,
 })
 
--- <leader>la: opt the current project into AI completion, project-wide, without
--- having to hand-write a `.nvim.lua` yourself.
---
--- Finds the project root (nearest `.git` upward from the current buffer, falling
--- back to cwd), writes a `.nvim.lua` there (only if one doesn't already exist) that
--- enables Minuet virtualtext for every filetype, trusts it via `vim.secure.trust`
--- (so you don't get an exrc prompt on next startup either), and sources it
--- immediately so AI completion turns on right away in the current session too.
--- The sensitive-file blocklist above still applies on top of this.
-local function enable_ai_project_wide()
-    local git_dir = vim.fs.find('.git', {
-        upward = true,
-        path = vim.fs.dirname(vim.api.nvim_buf_get_name(0)),
-    })[1]
-    local root = git_dir and vim.fs.dirname(git_dir) or vim.uv.cwd()
-    local path = root .. '/.nvim.lua'
-
-    if vim.fn.filereadable(path) == 0 then
-        local contents = {
-            '-- created by <leader>la / :EnableProjectAi — opts this project into',
-            '-- Claude-based inline completion, project-wide.',
-            '-- Narrow `pattern` to specific filetypes if you don\'t want it everywhere.',
-            '-- Do NOT commit this file to the project\'s own repo — add it to .gitignore.',
-            "vim.api.nvim_create_autocmd('FileType', {",
-            "    pattern = '*',",
-            "    callback = function() vim.cmd('Minuet virtualtext enable') end,",
-            '})',
-            '',
-        }
-        vim.fn.writefile(contents, path)
-        vim.notify('Created ' .. path .. ' — remember to add ".nvim.lua" to .gitignore', vim.log.levels.WARN)
-    end
-
-    -- vim.secure.trust with action='allow' hashes a buffer's live content, not the
-    -- file on disk, so load it into a scratch buffer just to compute/store the hash.
-    local trust_buf = vim.fn.bufadd(path)
-    vim.fn.bufload(trust_buf)
-    vim.secure.trust({ action = 'allow', bufnr = trust_buf })
-    vim.api.nvim_buf_delete(trust_buf, { force = true })
-
-    vim.cmd('luafile ' .. vim.fn.fnameescape(path))
-    vim.notify('AI completion enabled project-wide for ' .. root, vim.log.levels.INFO)
+local function enable_claude_project_wide()
+    local root = ai.enable_project_wide('-- minuet-ai (Claude) project-wide enable', {
+        "vim.api.nvim_create_augroup('ai_completion_minuet', { clear = true })",
+        "vim.api.nvim_create_autocmd('FileType', {",
+        "    group = 'ai_completion_minuet',",
+        "    pattern = '*',",
+        "    callback = function(args)",
+        "        if not vim.bo[args.buf].buflisted then return end",
+        "        vim.cmd('Minuet virtualtext enable')",
+        '    end,',
+        '})',
+    })
+    vim.notify('Claude AI completion enabled project-wide for ' .. root, vim.log.levels.INFO)
 end
 
-vim.api.nvim_create_user_command('EnableProjectAi', enable_ai_project_wide, {
-    desc = 'Create/trust/source .nvim.lua to enable AI completion for this project',
+vim.api.nvim_create_user_command('EnableProjectAi', enable_claude_project_wide, {
+    desc = 'Create/trust/source .nvim.lua to enable Claude AI completion for this project',
 })
 
-vim.keymap.set('n', '<leader>la', enable_ai_project_wide, { desc = 'Enable AI completion for this project' })
+vim.keymap.set('n', '<leader>la', enable_claude_project_wide, { desc = 'Enable Claude AI completion for this project' })
