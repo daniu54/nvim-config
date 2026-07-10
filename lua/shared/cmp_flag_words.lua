@@ -6,9 +6,11 @@
 -- anywhere after the dash prefix, not just prefix: typing `-erm` still
 -- matches `--TERM`.
 --
--- Also offers the flag together with the single word that follows it in the
+-- Also offers the flag together with the value that follows it in the
 -- buffer (e.g. `--command value` → typing `--command` also offers
--- `--command value`, not just `--command`).
+-- `--command value`, not just `--command`). If the value is quoted
+-- (`--command "one two"`), the whole quoted string is captured as the
+-- value; otherwise just the first word.
 
 -- Matches 1-2 leading dashes followed by a flag-word body (letters, digits,
 -- underscores, and internal dashes), anchored at the cursor. Keeping the
@@ -33,11 +35,21 @@ local function collect_tokens(bufnr)
         local flag_token = line:sub(s, e)
         tokens[flag_token] = true
 
-        -- Also offer "flag value" combined, where value is the single
-        -- whitespace-delimited word right after the flag (if any).
-        local value = line:sub(e + 1):match('^%s+(%S+)')
-        if value then
-          tokens[flag_token .. ' ' .. value] = true
+        -- Also offer "flag value" combined, where value is either a whole
+        -- quoted string (if the next non-space char opens one) or just the
+        -- first whitespace-delimited word.
+        local remainder = line:sub(e + 1):match('^%s+(.*)$')
+        if remainder then
+          local qchar = remainder:sub(1, 1)
+          local value
+          if qchar == '"' or qchar == "'" or qchar == '`' then
+            value = remainder:match('^(' .. qchar .. '[^' .. qchar .. ']*' .. qchar .. ')')
+          else
+            value = remainder:match('^(%S+)')
+          end
+          if value then
+            tokens[flag_token .. ' ' .. value] = true
+          end
         end
       end
       pos = e + 1
