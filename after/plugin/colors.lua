@@ -21,10 +21,20 @@ vim.api.nvim_set_hl(0, "NetrwDotDir",  { fg = "#6e6a86", bold = true }) -- dotdi
 -- applied via matchadd() so they work even in plain-text buffers with no syntax file.
 vim.api.nvim_set_hl(0, "HlQuotedString", { link = "String" })   -- "quoted", 'quoted', `quoted`
 vim.api.nvim_set_hl(0, "HlParenText",    { link = "Special" })  -- (parenthesised text)
+vim.api.nvim_set_hl(0, "HlBracketText",  { link = "Special" })  -- [bracketed text], same styling as parens
 vim.api.nvim_set_hl(0, "HlEscapeSequence", { fg = "#f6c177", bold = true }) -- \n / \t (rose-pine gold)
 vim.api.nvim_set_hl(0, "HlSlashCommand", { fg = "#9ccfd8", bold = true }) -- /command words (rose-pine foam)
 vim.api.nvim_set_hl(0, "HlFlagCommand",  { fg = "#c4a7e7", bold = true }) -- -command / --command flags (rose-pine iris)
 vim.api.nvim_set_hl(0, "HlGrayComment",  { fg = "#6e6a86" })    -- whole-line # / // comments (rose-pine muted)
+-- Merged from the retired ~/dotfiles/grc command-output profiles (see custom_highlights.lua)
+vim.api.nvim_set_hl(0, "HlNumber",  { link = "Number" })                     -- plain numbers (colorscheme's Number color)
+vim.api.nvim_set_hl(0, "HlDate",    { fg = "#9ccfd8" })                      -- YYYY-MM-DD dates/timestamps (rose-pine foam)
+vim.api.nvim_set_hl(0, "HlVersion", { fg = "#31748f", bold = true })         -- version numbers (rose-pine pine, bold blue)
+vim.api.nvim_set_hl(0, "HlUrl",     { fg = "#31748f", underline = true })    -- URLs (rose-pine pine, underline)
+vim.api.nvim_set_hl(0, "HlFilePath", { fg = "#9ccfd8", underline = true })   -- file paths / bare filenames (rose-pine foam, underline)
+vim.api.nvim_set_hl(0, "HlErrorWord",   { fg = "#eb6f92", bold = true })     -- error/fail/exception/... (rose-pine love)
+vim.api.nvim_set_hl(0, "HlWarnWord",    { fg = "#f6c177", bold = true })     -- warn/warning(s) (rose-pine gold)
+vim.api.nvim_set_hl(0, "HlSuccessWord", { fg = "#9ccfd8", bold = true })     -- success/ok/done/... (rose-pine foam)
 vim.api.nvim_set_hl(0, "HlTodoMarker",  { fg = "#31748f", bold = true })       -- TODO (rose-pine pine, bold blue)
 vim.api.nvim_set_hl(0, "HlFixmeMarker", { fg = "#eb6f92", bold = true })       -- FIXME (rose-pine love, bold red)
 vim.api.nvim_set_hl(0, "HlNoteMarker",  { fg = "#f6c177" })                    -- NOTE (rose-pine gold, non-bold yellow)
