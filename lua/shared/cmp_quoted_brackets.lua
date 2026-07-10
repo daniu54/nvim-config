@@ -26,6 +26,10 @@ local BRACKET_PATTERNS = {
   { delim = '{', pattern = '%b{}' },
 }
 
+-- Closing delimiter for each opening one, used to avoid inserting a second
+-- closing delimiter when one is already sitting right after the cursor.
+local CLOSING = { ['"'] = '"', ["'"] = "'", ['`'] = '`', ['('] = ')', ['['] = ']', ['{'] = '}' }
+
 local source = {}
 
 source.new = function()
@@ -68,21 +72,37 @@ source.complete = function(_, params, callback)
   local delim = matched:sub(1, 1)
   local typed = matched:sub(2)
 
+  -- If a closing delimiter already sits right after the cursor (e.g. cursor
+  -- inside an already-closed empty pair `"|"`), don't insert another one —
+  -- drop the token's own trailing closing delimiter and let the existing
+  -- one stand.
+  local closing = CLOSING[delim]
+  local already_closed = closing ~= nil and params.context.cursor_after_line:sub(1, #closing) == closing
+
   local bufnr = vim.api.nvim_get_current_buf()
   local items = {}
   for token, _ in pairs(collect_tokens(bufnr, delim)) do
     -- Substring-anywhere match, not just prefix: "est" matches "test".
     if typed == '' or token:find(typed, 1, true) then
-      table.insert(items, {
-        label = token,
-        -- Replaces the delimiter + typed text (cmp's match offset) with the
-        -- full token, since KEYWORD_PATTERN anchors the offset at the delimiter.
-        insertText = token,
-        -- Trivially matches what's already been typed; our own substring
-        -- check above already decided which tokens qualify.
-        filterText = matched,
-        kind = require('cmp').lsp.CompletionItemKind.Text,
-      })
+      local insert_text = token
+      if already_closed then
+        insert_text = token:sub(1, -1 - #closing)
+      end
+      -- Skip if this would insert exactly what's already typed (a no-op
+      -- self-suggestion, e.g. the in-progress token matching itself).
+      if insert_text ~= matched then
+        table.insert(items, {
+          label = token,
+          -- Replaces the delimiter + typed text (cmp's match offset) with
+          -- the full token, since KEYWORD_PATTERN anchors the offset at
+          -- the delimiter.
+          insertText = insert_text,
+          -- Trivially matches what's already been typed; our own substring
+          -- check above already decided which tokens qualify.
+          filterText = matched,
+          kind = require('cmp').lsp.CompletionItemKind.Text,
+        })
+      end
     end
   end
 
