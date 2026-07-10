@@ -22,6 +22,7 @@ vim.api.nvim_set_hl(0, "NetrwDotDir",  { fg = "#6e6a86", bold = true }) -- dotdi
 vim.api.nvim_set_hl(0, "HlQuotedString", { link = "String" })   -- "quoted", 'quoted', `quoted`
 vim.api.nvim_set_hl(0, "HlParenText",    { link = "Special" })  -- (parenthesised text)
 vim.api.nvim_set_hl(0, "HlSlashCommand", { fg = "#9ccfd8", bold = true }) -- /command words (rose-pine foam)
+vim.api.nvim_set_hl(0, "HlFlagCommand",  { fg = "#c4a7e7", bold = true }) -- -command / --command flags (rose-pine iris)
 vim.api.nvim_set_hl(0, "HlGrayComment",  { fg = "#6e6a86" })    -- whole-line # / // comments (rose-pine muted)
 
 -- Inner nvim ($NVIM set = launched from inside another nvim's terminal buffer):

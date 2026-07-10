@@ -13,6 +13,9 @@ local GROUPS = {
     -- /command words — must start a word (after whitespace or line start) to
     -- avoid matching mid-token things like inline division `a/b`
     { name = 'HlSlashCommand', pattern = [[\(^\|\s\)\zs/\S\+]],         priority = 12 },
+    -- -command / --command words — must start a word (after whitespace or line
+    -- start), same reasoning as slash-commands (avoid mid-token hyphens)
+    { name = 'HlFlagCommand',  pattern = [[\(^\|\s\)\zs--\?[A-Za-z_][-A-Za-z0-9_]*]], priority = 12 },
     -- whole-line comments: gray, but lower priority than the groups above so
     -- quoted/parenthesised/slash content inside a comment still highlights
     { name = 'HlGrayComment',  pattern = [[^\s*\(#\|//\).*$]],          priority = 5 },
