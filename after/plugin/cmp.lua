@@ -1,5 +1,7 @@
 local cmp = require('cmp')
 
+cmp.register_source('quoted_brackets', require('shared.cmp_quoted_brackets').new())
+
 -- Counts how often each word appears in the current buffer.
 -- Result is cached by changedtick so it only recounts on actual edits.
 local buf_freq_cache = {}
@@ -79,6 +81,7 @@ cmp.setup({
         {
             { name = 'buffer', keyword_length = 1 },  -- words from open buffers
             { name = 'path' },                         -- file paths
+            { name = 'quoted_brackets' },               -- existing "quoted", 'quoted', `quoted`, (…), […], {…} content
         }
     ),
 })
