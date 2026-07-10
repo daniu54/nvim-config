@@ -22,6 +22,11 @@ local GROUPS = {
     -- whole-line comments: gray, but lower priority than the groups above so
     -- quoted/parenthesised/slash content inside a comment still highlights
     { name = 'HlGrayComment',  pattern = [[^\s*\(#\|//\).*$]],          priority = 5 },
+    -- TODO / FIXME / NOTE markers — matched anywhere, even mid-word (e.g.
+    -- `testTODObuh`), and even inside comments/strings, hence top priority
+    { name = 'HlTodoMarker',  pattern = [[TODO]],                      priority = 20 },
+    { name = 'HlFixmeMarker', pattern = [[FIXME]],                     priority = 20 },
+    { name = 'HlNoteMarker',  pattern = [[NOTE]],                      priority = 20 },
 }
 
 local function apply_matches()
