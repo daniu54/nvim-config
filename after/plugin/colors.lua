@@ -17,6 +17,13 @@ vim.api.nvim_set_hl(0, "NvimTerminalTVisual", { bg = "#0d3a0d" })  -- dark green
 vim.api.nvim_set_hl(0, "NetrwDotFile", { fg = "#6e6a86" })           -- dotfiles
 vim.api.nvim_set_hl(0, "NetrwDotDir",  { fg = "#6e6a86", bold = true }) -- dotdirs (bold preserved)
 
+-- Generic cross-filetype highlights (after/plugin/custom_highlights.lua):
+-- applied via matchadd() so they work even in plain-text buffers with no syntax file.
+vim.api.nvim_set_hl(0, "HlQuotedString", { link = "String" })   -- "quoted", 'quoted', `quoted`
+vim.api.nvim_set_hl(0, "HlParenText",    { link = "Special" })  -- (parenthesised text)
+vim.api.nvim_set_hl(0, "HlSlashCommand", { fg = "#9ccfd8", bold = true }) -- /command words (rose-pine foam)
+vim.api.nvim_set_hl(0, "HlGrayComment",  { fg = "#6e6a86" })    -- whole-line # / // comments (rose-pine muted)
+
 -- Inner nvim ($NVIM set = launched from inside another nvim's terminal buffer):
 -- override Visual + Cursor globally so editing colours are green.
 -- WHY hl group here, not OSC 12: Cursor hl applies to n/i/v modes (normal editing).
