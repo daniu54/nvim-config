@@ -11,6 +11,11 @@
 -- `--command value`, not just `--command`). If the value is quoted
 -- (`--command "one two"`), the whole quoted string is captured as the
 -- value; otherwise just the first word.
+--
+-- Matching is fuzzy (in-order subsequence, gaps allowed), so separators
+-- like spaces/quotes between the flag and value don't need to be typed:
+-- with `-p "one two"` in the buffer, typing `-ptwo` matches (p, then t-w-o
+-- found later in order), even though "ptwo" isn't a contiguous substring.
 
 -- Matches 1-2 leading dashes followed by a flag-word body (letters, digits,
 -- underscores, and internal dashes), anchored at the cursor. Keeping the
@@ -58,6 +63,23 @@ local function collect_tokens(bufnr)
   return tokens
 end
 
+-- In-order subsequence match: every character of needle must appear in
+-- haystack in the same order, but not necessarily contiguously.
+local function fuzzy_subsequence(haystack, needle)
+  if needle == '' then
+    return true
+  end
+  local from = 1
+  for i = 1, #needle do
+    local found = haystack:find(needle:sub(i, i), from, true)
+    if not found then
+      return false
+    end
+    from = found + 1
+  end
+  return true
+end
+
 local source = {}
 
 source.new = function()
@@ -84,11 +106,12 @@ source.complete = function(_, params, callback)
   local items = {}
   for token, _ in pairs(collect_tokens(bufnr)) do
     local body = token:match('^%-+(.*)$') or token
-    -- Substring-anywhere match, not just prefix: "erm" matches "TERM".
+    -- Fuzzy in-order match, not just prefix/substring: "ptwo" matches
+    -- `p "one two"` since separators between matched chars are skipped.
     -- Skip the token if it's exactly what's already typed at the cursor
     -- (e.g. the in-progress word itself, picked up mid-edit) — completing
     -- to identical text offers nothing.
-    if token ~= matched and (typed == '' or body:find(typed, 1, true)) then
+    if token ~= matched and fuzzy_subsequence(body, typed) then
       table.insert(items, {
         label = token,
         -- Replaces the dash(es) + typed text (cmp's match offset) with the
