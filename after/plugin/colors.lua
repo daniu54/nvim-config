@@ -28,6 +28,7 @@ vim.api.nvim_set_hl(0, "HlGrayComment",  { fg = "#6e6a86" })    -- whole-line # 
 vim.api.nvim_set_hl(0, "HlTodoMarker",  { fg = "#31748f", bold = true })       -- TODO (rose-pine pine, bold blue)
 vim.api.nvim_set_hl(0, "HlFixmeMarker", { fg = "#eb6f92", bold = true })       -- FIXME (rose-pine love, bold red)
 vim.api.nvim_set_hl(0, "HlNoteMarker",  { fg = "#f6c177" })                    -- NOTE (rose-pine gold, non-bold yellow)
+vim.api.nvim_set_hl(0, "HlBugMarker",   { fg = "#f59e0b", bold = true })       -- BUG (amber/orange, bold)
 
 -- Inner nvim ($NVIM set = launched from inside another nvim's terminal buffer):
 -- override Visual + Cursor globally so editing colours are green.

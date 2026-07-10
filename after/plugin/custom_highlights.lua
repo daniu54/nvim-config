@@ -27,6 +27,7 @@ local GROUPS = {
     { name = 'HlTodoMarker',  pattern = [[TODO]],                      priority = 20 },
     { name = 'HlFixmeMarker', pattern = [[FIXME]],                     priority = 20 },
     { name = 'HlNoteMarker',  pattern = [[NOTE]],                      priority = 20 },
+    { name = 'HlBugMarker',   pattern = [[BUG]],                       priority = 20 },
 }
 
 local function apply_matches()
