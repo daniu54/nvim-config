@@ -113,7 +113,22 @@ local function on_attach(_, bufnr)
     -- gri        → implementation
 end
 
-local function lsp_enable_python()
+-- Tracks which filetypes have had auto-attach wired up already, so
+-- <leader>le only needs to be pressed once per session (not once per file)
+-- to get LSP on every buffer of that type opened afterwards (:e, <C-o>, etc.)
+local autostart_registered = {}
+
+local function ensure_autostart(ft, start_fn)
+    if autostart_registered[ft] then return end
+    autostart_registered[ft] = true
+
+    vim.api.nvim_create_autocmd('FileType', {
+        pattern = ft,
+        callback = function() start_fn(true) end,
+    })
+end
+
+local function lsp_enable_python(quiet)
     -- Prefer Mason-installed binary, fall back to system PATH
     local mason_bin = vim.fn.stdpath('data') .. '/mason/bin/pyright-langserver'
     local cmd = vim.fn.executable(mason_bin) == 1 and mason_bin or 'pyright-langserver'
@@ -163,7 +178,11 @@ local function lsp_enable_python()
         },
     })
 
-    vim.notify('LSP (pyright) started\npackages: ' .. venv_msg, vim.log.levels.INFO)
+    if not quiet then
+        vim.notify('LSP (pyright) started\npackages: ' .. venv_msg, vim.log.levels.INFO)
+    end
+
+    ensure_autostart('python', lsp_enable_python)
 end
 
 -- Zig LSP (zls). One-time setup: install via :MasonInstall zls
@@ -182,7 +201,7 @@ end
 -- pinned zig version, but as a Linux binary it self-reports Linux paths, so
 -- zls's canonicalization no longer breaks. Building/running the project
 -- still goes through the Windows zig.exe — this only affects the LSP.
-local function lsp_enable_zig()
+local function lsp_enable_zig(quiet)
     local mason_bin = vim.fn.stdpath('data') .. '/mason/bin/zls'
     local cmd = vim.fn.executable(mason_bin) == 1 and mason_bin or 'zls'
 
@@ -222,7 +241,11 @@ local function lsp_enable_zig()
         },
     })
 
-    vim.notify('LSP (zls) started\nzig: ' .. zig_exe_path, vim.log.levels.INFO)
+    if not quiet then
+        vim.notify('LSP (zls) started\nzig: ' .. zig_exe_path, vim.log.levels.INFO)
+    end
+
+    ensure_autostart('zig', lsp_enable_zig)
 end
 
 local function lsp_enable()
