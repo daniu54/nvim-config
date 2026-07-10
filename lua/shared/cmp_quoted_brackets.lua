@@ -3,9 +3,16 @@
 -- opening delimiter (", ', `, (, [, {).
 --
 -- e.g. buffer already has `var identifier = "TEST";` somewhere — typing `"`
--- anywhere else in the buffer offers `"TEST"` as a completion.
+-- anywhere else in the buffer offers `"TEST"` as a completion. Matching is
+-- substring-anywhere, not just prefix: typing `"est` still matches `"test"`.
 
 local DELIMITERS = { '"', "'", '`', '(', '[', '{' }
+
+-- Matches an opening delimiter followed by whatever's been typed since,
+-- anchored at the cursor. Keeping the delimiter itself inside the match
+-- (unlike a plain \k*) anchors cmp's replacement offset at the delimiter, so
+-- confirming an item replaces the delimiter + typed text with the full token.
+local KEYWORD_PATTERN = [[\%("\|'\|`\|(\|\[\|{\)\k*]]
 
 local QUOTE_PATTERNS = {
   { delim = '"', pattern = '"[^"\n]*"' },
@@ -29,10 +36,8 @@ source.get_trigger_characters = function()
   return DELIMITERS
 end
 
--- Plain word chars only: the opening delimiter itself is left untouched in
--- the buffer, we only ever insert/filter on what comes after it.
 source.get_keyword_pattern = function()
-  return [[\k*]]
+  return KEYWORD_PATTERN
 end
 
 local function collect_tokens(bufnr, delim)
@@ -53,26 +58,35 @@ local function collect_tokens(bufnr, delim)
 end
 
 source.complete = function(_, params, callback)
-  local before_char = string.match(params.context.cursor_before_line, '(.)%s*$')
-  if not before_char or not vim.tbl_contains(DELIMITERS, before_char) then
+  -- Find the delimiter + typed-so-far text ending exactly at the cursor.
+  local matched = vim.fn.matchstr(params.context.cursor_before_line, KEYWORD_PATTERN .. '$')
+  if matched == '' then
     callback({ items = {}, isIncomplete = false })
     return
   end
 
+  local delim = matched:sub(1, 1)
+  local typed = matched:sub(2)
+
   local bufnr = vim.api.nvim_get_current_buf()
   local items = {}
-  for token, _ in pairs(collect_tokens(bufnr, before_char)) do
-    -- The opening delimiter is already in the buffer, so only insert the rest.
-    local rest = token:sub(2)
-    table.insert(items, {
-      label = token,
-      insertText = rest,
-      filterText = rest,
-      kind = require('cmp').lsp.CompletionItemKind.Text,
-    })
+  for token, _ in pairs(collect_tokens(bufnr, delim)) do
+    -- Substring-anywhere match, not just prefix: "est" matches "test".
+    if typed == '' or token:find(typed, 1, true) then
+      table.insert(items, {
+        label = token,
+        -- Replaces the delimiter + typed text (cmp's match offset) with the
+        -- full token, since KEYWORD_PATTERN anchors the offset at the delimiter.
+        insertText = token,
+        -- Trivially matches what's already been typed; our own substring
+        -- check above already decided which tokens qualify.
+        filterText = matched,
+        kind = require('cmp').lsp.CompletionItemKind.Text,
+      })
+    end
   end
 
-  callback({ items = items, isIncomplete = false })
+  callback({ items = items, isIncomplete = true })
 end
 
 return source
