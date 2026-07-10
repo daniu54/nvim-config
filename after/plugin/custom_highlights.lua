@@ -23,7 +23,15 @@ local GROUPS = {
     -- bare filenames, both with an optional :line or :line:col suffix.
     -- Extension must start with a letter so plain decimals (`3.14`) don't
     -- get misread as a bare filename.
-    { name = 'HlFilePath', pattern = [=[\%(\%(\a:[\\/]\|\.\.\?[\\/]\|[\\/]\)\?[[:alnum:]_.-]\+[\\/][[:alnum:]_./\\-]\+\.\a[[:alnum:]]\{0,7}\|\<[[:alnum:]_-]\+\.\a[[:alnum:]]\{0,7}\)\%(:\d\+\%(:\d\+\)\?\)\?\>]=], priority = 9 },
+    --
+    -- The `~[\\/]...` branch is separate from the generic dir/file branch
+    -- below it: that one requires two path segments (or a name.ext with a
+    -- word boundary before the name), so a single dotfile right after the
+    -- prefix — `~/.zsh_history` (no 2nd `/`, and no 2nd `.` to read as an
+    -- extension) — never matched at all, and `~/.zshrc.secrets` only
+    -- matched the bare `zshrc.secrets` tail (no word boundary starts on
+    -- `.`, so the `~/.` prefix was left out of the match/highlight).
+    { name = 'HlFilePath', pattern = [=[\%(\~[\\/][[:alnum:]_./\\-]\+\|\%(\%(\a:[\\/]\|\.\.\?[\\/]\|[\\/]\)\?[[:alnum:]_.-]\+[\\/][[:alnum:]_./\\-]\+\.\a[[:alnum:]]\{0,7}\|\<[[:alnum:]_-]\+\.\a[[:alnum:]]\{0,7}\)\)\%(:\d\+\%(:\d\+\)\?\)\?\>]=], priority = 9 },
     -- URLs — higher priority than plain paths, so a URL's own path segment
     -- (e.g. the `/foo/bar.tar.gz` in `https://example.com/foo/bar.tar.gz`)
     -- doesn't get re-colored as a bare file path
