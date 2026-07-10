@@ -10,6 +10,9 @@ local GROUPS = {
     { name = 'HlQuotedString', pattern = [["[^"]*"\|'[^']*'\|`[^`]*`]], priority = 12 },
     -- (parenthesised text) — non-greedy so `(a) x (b)` gives two matches, not one
     { name = 'HlParenText',    pattern = [[(.\{-})]],                   priority = 11 },
+    -- literal \n / \t escape sequences — highest priority so they still stand
+    -- out even inside an already-highlighted quoted string
+    { name = 'HlEscapeSequence', pattern = [=[\\[nt]]=],                priority = 13 },
     -- /command words — must start a word (after whitespace or line start) to
     -- avoid matching mid-token things like inline division `a/b`
     { name = 'HlSlashCommand', pattern = [[\(^\|\s\)\zs/\S\+]],         priority = 12 },
