@@ -48,6 +48,7 @@ local lines = {
   "   <leader>Y        yank to system clipboard                 ",
   "   <leader>P        paste from system clipboard              ",
   "   <leader>s        search-replace word under cursor         ",
+  "   :FixLineEndings  strip ^M, set fileformat=unix             ",
   " ─────────────────────────────────────────────────────────── ",
   "  LSP  (Python/Zig — run :LspEnable or <leader>le first)     ",
   "   gd               go to definition                         ",
