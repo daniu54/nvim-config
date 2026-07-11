@@ -28,6 +28,7 @@ vim.api.nvim_set_hl(0, "HlFlagCommand",  { fg = "#c4a7e7", bold = true }) -- -co
 vim.api.nvim_set_hl(0, "HlGrayComment",  { fg = "#6e6a86" })    -- whole-line # / // comments (rose-pine muted)
 -- Merged from the retired ~/dotfiles/grc command-output profiles (see custom_highlights.lua)
 vim.api.nvim_set_hl(0, "HlNumber",  { link = "Number" })                     -- plain numbers (colorscheme's Number color)
+vim.api.nvim_set_hl(0, "HlTime",    { fg = "#9ccfd8" })                      -- HH:MM times (rose-pine foam)
 vim.api.nvim_set_hl(0, "HlDate",    { fg = "#9ccfd8" })                      -- YYYY-MM-DD dates/timestamps (rose-pine foam)
 vim.api.nvim_set_hl(0, "HlVersion", { fg = "#31748f", bold = true })         -- version numbers (rose-pine pine, bold blue)
 vim.api.nvim_set_hl(0, "HlUrl",     { fg = "#31748f", underline = true })    -- URLs (rose-pine pine, underline)
