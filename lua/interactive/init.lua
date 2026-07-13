@@ -13,6 +13,10 @@
 --   line two
 --   line three"''
 -- See parser.marker_count for how the span is detected.
+--
+-- A still-running instruction can be killed by commenting it out - prefix
+-- its line with a single "#" (not "##", which means "finished"):
+--   # /sleep 300
 local parser = require("interactive.parser")
 local job = require("interactive.job")
 local region = require("interactive.region")
@@ -20,13 +24,41 @@ local region = require("interactive.region")
 local M = {}
 
 local claim_ns = vim.api.nvim_create_namespace("interactive_claim")
-local DEBOUNCE_MS = 300
+-- Every TextChanged/CursorMoved event restarts this timer, so it doubles as
+-- the grace period between the cursor actually leaving an instruction's
+-- line and that instruction firing - a brief flick of the cursor off the
+-- line and back (e.g. an arrow-key typo) won't trigger a run.
+local DEBOUNCE_MS = 600
 
 local debounce_timers = {} -- bufnr -> uv_timer
+local running = {} -- job_id -> { bufnr, instr_region } - only entries for still-running jobs
 
 local function is_claimed(bufnr, row)
   local marks = vim.api.nvim_buf_get_extmarks(bufnr, claim_ns, { row, 0 }, { row, -1 }, {})
   return #marks > 0
+end
+
+-- A single leading "#" requests a kill; "##" (finalize's own "done" prefix)
+-- must not be mistaken for it - "^#%s" already can't match "## " (its
+-- second character is "#", not whitespace), but lines like "#/cmd" (no
+-- space) are also accepted, so check that case explicitly too.
+local function is_kill_marker(line)
+  return line:match("^#") ~= nil and line:match("^##") == nil
+end
+
+-- Runs on every scan (cheap: only ever as many entries as running jobs).
+-- Unlike scan()'s claim-based logic, this targets rows that are already
+-- claimed (they're running), so the two never fight over the same row.
+local function check_kills(bufnr)
+  for job_id, entry in pairs(running) do
+    if entry.bufnr == bufnr then
+      local line = region.instr_line(bufnr, entry.instr_region)
+      if line and is_kill_marker(line) then
+        job.kill(job_id)
+        running[job_id] = nil
+      end
+    end
+  end
 end
 
 -- While the cursor is still sitting somewhere in [start_row, end_row] (in
@@ -53,14 +85,20 @@ local function run(bufnr, row, instr, output_row)
   local cwd = vim.fn.expand("#" .. bufnr .. ":p:h")
 
   local instr_region -- set once job.start returns, read by the async callbacks below
+  local job_id -- forward-declared: the on_done closure below must close over
+  -- this same local, not create/reference an unrelated one - a plain
+  -- `local job_id, pid = job.start(...)` would evaluate the RHS (and build
+  -- these closures) before the new local's scope even begins.
 
-  local job_id, pid = job.start(bufnr, cmd_text, cwd, instr.lines,
+  local pid
+  job_id, pid = job.start(bufnr, cmd_text, cwd, instr.lines,
     function(lines)
       if instr_region then
         region.update(bufnr, instr_region, lines)
       end
     end,
     function(lines)
+      running[job_id] = nil
       if instr_region then
         region.update(bufnr, instr_region, lines)
         region.finalize(bufnr, instr_region)
@@ -71,6 +109,7 @@ local function run(bufnr, row, instr, output_row)
     return
   end
   instr_region = region.create(bufnr, row, pid, output_row)
+  running[job_id] = { bufnr = bufnr, instr_region = instr_region }
 end
 
 -- Finds where an instruction starting at start_row ends: if first_line_rest
@@ -103,6 +142,7 @@ local function scan(bufnr)
   if not vim.api.nvim_buf_is_valid(bufnr) or not vim.b[bufnr].interactive_mode then
     return
   end
+  check_kills(bufnr)
   local line_count = vim.api.nvim_buf_line_count(bufnr)
   local row = 0
   while row < line_count do

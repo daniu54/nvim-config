@@ -114,4 +114,19 @@ function M.stop_all()
   M.jobs = {}
 end
 
+-- Requests termination but, unlike stop_job/stop_for_buffer/stop_all above,
+-- does NOT force-cleanup term_buf itself - the normal on_exit handler
+-- registered in M.start still runs, so on_output/on_done fire exactly as on
+-- natural completion (freezing the region at the last captured output
+-- instead of blanking it). Used for a single targeted kill (e.g. the user
+-- commenting out a running instruction's line) while Neovim keeps running,
+-- as opposed to the bulk-teardown paths above where waiting on that async
+-- callback isn't safe (:qa is tearing everything down; :bwipeout may have
+-- already invalidated the buffer we'd write the finalized output into).
+function M.kill(job_id)
+  if M.jobs[job_id] then
+    pcall(vim.fn.jobstop, job_id)
+  end
+end
+
 return M

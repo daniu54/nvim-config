@@ -46,7 +46,12 @@ function M.create(bufnr, instr_row, pid, output_row)
   end)
 
   return {
-    instr_mark = vim.api.nvim_buf_set_extmark(bufnr, ns, instr_row, 0, {}),
+    -- right_gravity = false: a *whole-line* replace at this row (e.g. the
+    -- user commenting the instruction out via a full-line edit) is a
+    -- delete-then-insert at the same position; a default right-gravity mark
+    -- would get pushed past the freshly inserted line onto the row below it
+    -- instead of staying anchored to its own line.
+    instr_mark = vim.api.nvim_buf_set_extmark(bufnr, ns, instr_row, 0, { right_gravity = false }),
     start_mark = vim.api.nvim_buf_set_extmark(bufnr, ns, output_row + 1, 0, {}),
     end_mark = vim.api.nvim_buf_set_extmark(bufnr, ns, output_row + 2, 0, {}),
   }
@@ -77,6 +82,20 @@ function M.update(bufnr, region, lines)
   with_cursors_preserved(bufnr, function()
     vim.api.nvim_buf_set_lines(bufnr, content_start, content_end, false, lines)
   end)
+end
+
+-- Current text of a region's instruction line (nil if the buffer/mark is
+-- gone). Used to notice the user has edited a still-running instruction,
+-- e.g. to comment it out and request a kill.
+function M.instr_line(bufnr, region)
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return nil
+  end
+  local pos = vim.api.nvim_buf_get_extmark_by_id(bufnr, ns, region.instr_mark, {})
+  if not pos[1] then
+    return nil
+  end
+  return vim.api.nvim_buf_get_lines(bufnr, pos[1], pos[1] + 1, false)[1]
 end
 
 function M.finalize(bufnr, region)
