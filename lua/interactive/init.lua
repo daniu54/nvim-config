@@ -45,7 +45,7 @@ local function run(bufnr, row, instr)
 
   local instr_region -- set once job.start returns, read by the async callbacks below
 
-  local job_id, pid = job.start(cmd_text, cwd,
+  local job_id, pid = job.start(bufnr, cmd_text, cwd, instr.lines,
     function(lines)
       if instr_region then
         region.update(bufnr, instr_region, lines)
@@ -96,6 +96,19 @@ local function schedule_scan(bufnr)
   end)
 end
 
+-- Fires on :q/:bd/:bw (BufUnload/BufWipeout) for this buffer specifically,
+-- so quitting one interactive buffer doesn't touch jobs from another. The
+-- VimLeavePre in M.setup() below is the blanket fallback for :qa.
+local function cleanup_buffer(bufnr)
+  job.stop_for_buffer(bufnr)
+  local timer = debounce_timers[bufnr]
+  if timer then
+    timer:stop()
+    timer:close()
+    debounce_timers[bufnr] = nil
+  end
+end
+
 function M.enable(bufnr)
   bufnr = (bufnr and bufnr ~= 0) and bufnr or vim.api.nvim_get_current_buf()
   if vim.b[bufnr].interactive_mode then
@@ -104,11 +117,22 @@ function M.enable(bufnr)
   end
   vim.b[bufnr].interactive_mode = true
 
+  local group = vim.api.nvim_create_augroup("interactive_buf_" .. bufnr, { clear = true })
+
   vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "InsertLeave", "CursorMoved", "CursorMovedI" }, {
-    group = vim.api.nvim_create_augroup("interactive_buf_" .. bufnr, { clear = true }),
+    group = group,
     buffer = bufnr,
     callback = function()
       schedule_scan(bufnr)
+    end,
+  })
+
+  vim.api.nvim_create_autocmd({ "BufUnload", "BufWipeout" }, {
+    group = group,
+    buffer = bufnr,
+    once = true,
+    callback = function()
+      cleanup_buffer(bufnr)
     end,
   })
 
