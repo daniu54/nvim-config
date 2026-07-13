@@ -23,6 +23,21 @@ local function is_claimed(bufnr, row)
   return #marks > 0
 end
 
+-- While the cursor is still sitting on the line (in any window showing this
+-- buffer), the user is presumably still typing it out - don't claim or run
+-- it yet. Left unclaimed, it's picked up by the next scan once the cursor
+-- moves away.
+local function cursor_on_row(bufnr, row)
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_buf(win) == bufnr then
+      if vim.api.nvim_win_get_cursor(win)[1] - 1 == row then
+        return true
+      end
+    end
+  end
+  return false
+end
+
 local function run(bufnr, row, instr)
   local custom = parser.custom_commands[instr.name]
   local cmd_text = custom and custom(instr) or instr.raw
@@ -57,7 +72,7 @@ local function scan(bufnr)
   end
   local line_count = vim.api.nvim_buf_line_count(bufnr)
   for row = 0, line_count - 1 do
-    if not is_claimed(bufnr, row) then
+    if not is_claimed(bufnr, row) and not cursor_on_row(bufnr, row) then
       local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1]
       local instr = line and parser.parse(line)
       if instr then
@@ -89,7 +104,7 @@ function M.enable(bufnr)
   end
   vim.b[bufnr].interactive_mode = true
 
-  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "InsertLeave" }, {
+  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "InsertLeave", "CursorMoved", "CursorMovedI" }, {
     group = vim.api.nvim_create_augroup("interactive_buf_" .. bufnr, { clear = true }),
     buffer = bufnr,
     callback = function()
