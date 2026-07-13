@@ -17,6 +17,11 @@
 -- A still-running instruction can be killed by commenting it out - prefix
 -- its line with a single "#" (not "##", which means "finished"):
 --   # /sleep 300
+--
+-- With the cursor anywhere in a still-running instruction's block,
+-- <leader>ii jumps to its live terminal (e.g. to drive an interactive
+-- program like lazygit directly) - <C-e> exits terminal mode there, and
+-- <leader>ii again jumps back to the notebook.
 local parser = require("interactive.parser")
 local job = require("interactive.job")
 local region = require("interactive.region")
@@ -44,6 +49,20 @@ end
 -- space) are also accepted, so check that case explicitly too.
 local function is_kill_marker(line)
   return line:match("^#") ~= nil and line:match("^##") == nil
+end
+
+-- Finds the running job whose instruction+output block currently contains
+-- row (0-indexed), if any - used by the <leader>ii "focus" keymap.
+local function job_at_row(bufnr, row)
+  for job_id, entry in pairs(running) do
+    if entry.bufnr == bufnr then
+      local instr_row, end_row = region.extent(bufnr, entry.instr_region)
+      if instr_row and row >= instr_row and row <= end_row then
+        return job_id
+      end
+    end
+  end
+  return nil
 end
 
 -- Runs on every scan (cheap: only ever as many entries as running jobs).
@@ -225,6 +244,16 @@ function M.enable(bufnr)
     return
   end
   vim.b[bufnr].interactive_mode = true
+
+  vim.keymap.set("n", "<leader>ii", function()
+    local row = vim.api.nvim_win_get_cursor(0)[1] - 1
+    local job_id = job_at_row(bufnr, row)
+    if job_id then
+      job.focus(job_id)
+    else
+      vim.notify("[interactive] no running job at cursor", vim.log.levels.INFO)
+    end
+  end, { buffer = bufnr, desc = "Focus running instruction's terminal" })
 
   local group = vim.api.nvim_create_augroup("interactive_buf_" .. bufnr, { clear = true })
 

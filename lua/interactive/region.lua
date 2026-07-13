@@ -98,6 +98,22 @@ function M.instr_line(bufnr, region)
   return vim.api.nvim_buf_get_lines(bufnr, pos[1], pos[1] + 1, false)[1]
 end
 
+-- The full row range a region currently occupies, from its instruction line
+-- through its "``` end" line (nil if the buffer/marks are gone). Used to
+-- tell whether the cursor is anywhere inside a running instruction's
+-- footprint, e.g. to focus its live terminal.
+function M.extent(bufnr, region)
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return nil
+  end
+  local instr_pos = vim.api.nvim_buf_get_extmark_by_id(bufnr, ns, region.instr_mark, {})
+  local end_pos = vim.api.nvim_buf_get_extmark_by_id(bufnr, ns, region.end_mark, {})
+  if not instr_pos[1] or not end_pos[1] then
+    return nil
+  end
+  return instr_pos[1], end_pos[1]
+end
+
 function M.finalize(bufnr, region)
   if vim.api.nvim_buf_is_valid(bufnr) then
     local pos = vim.api.nvim_buf_get_extmark_by_id(bufnr, ns, region.instr_mark, {})

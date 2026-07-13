@@ -120,12 +120,44 @@ local function close_host_tab(host_tab)
   vim.o.eventignore = orig_ei
 end
 
+-- Switches to a window (in whichever tab has one) currently showing bufnr -
+-- used to jump back from a job's terminal to the notebook that launched it.
+local function jump_to_bufnr(bufnr)
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_buf(win) == bufnr then
+      vim.api.nvim_set_current_tabpage(vim.api.nvim_win_get_tabpage(win))
+      vim.api.nvim_set_current_win(win)
+      return true
+    end
+  end
+  return false
+end
+
+-- Switches to a running job's hidden tab and drops straight into terminal
+-- mode, so its keystrokes go straight to the process (e.g. driving lazygit
+-- interactively) instead of just watching the tailed output in the
+-- notebook. <C-e> (mapped globally in telescope.lua) exits terminal mode
+-- from there as usual; the buffer-local keymap set in M.start jumps back.
+function M.focus(job_id)
+  local job = M.jobs[job_id]
+  if not job or not vim.api.nvim_tabpage_is_valid(job.host_tab) then
+    return false
+  end
+  vim.api.nvim_set_current_tabpage(job.host_tab)
+  vim.api.nvim_set_current_win(job.host_win)
+  vim.cmd("startinsert")
+  return true
+end
+
 -- on_output(lines) fires periodically while the job runs.
 -- on_done(lines, exit_code) fires once, after the job exits.
 function M.start(bufnr, cmd_text, cwd, viewport_lines, on_output, on_done)
   viewport_lines = viewport_lines or DEFAULT_VIEWPORT_LINES
   local term_buf = vim.api.nvim_create_buf(false, true)
   local host_win, host_tab, cols, rows = open_host_win(term_buf, viewport_lines)
+  vim.keymap.set("n", "<leader>ii", function()
+    jump_to_bufnr(bufnr)
+  end, { buffer = term_buf, desc = "Return to notebook buffer" })
   local job_id
 
   vim.api.nvim_buf_call(term_buf, function()
