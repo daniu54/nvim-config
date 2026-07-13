@@ -12,7 +12,7 @@
 -- `ttv`, `cheat`) resolve, the same as if typed at a real prompt.
 local M = {}
 
-M.jobs = {} -- job_id -> { bufnr, term_buf, timer, host_win }
+M.jobs = {} -- job_id -> { bufnr, term_buf, timer, host_win, host_tab }
 
 local DEFAULT_VIEWPORT_LINES = 50
 local VIEWPORT_COLS = 100
@@ -54,14 +54,33 @@ end
 -- viewport before starting the job, and keep that window open for the job's
 -- whole lifetime - closing it stops the terminal from updating its buffer
 -- content at all (tested: content freezes blank), so it can't be a
--- create-then-close step. `winblend = 100` plus `focusable = false` makes it
--- fully invisible/inert without ever taking it off-screen, which Neovim
--- would otherwise clamp back onto the visible area anyway. An
--- oversized request is silently clamped to the real screen size (tested: no
--- error, nvim_win_get_height reports the clamped value) - no manual
--- clamping needed, but the clamped size is read back so PTY sizing and tail
--- polling stay consistent with what the grid can actually hold.
+-- create-then-close step.
+--
+-- The window lives on its own tabpage, created and immediately switched
+-- away from, rather than as a blended/unfocusable float over the current
+-- tab: a `winblend = 100` float (tried first) only blends *colors*, not
+-- glyphs, so a dense TUI's box-drawing characters and text still visibly
+-- painted over the user's buffer just with washed-out colors - genuinely
+-- ugly in practice despite testing clean in a headless (visually-unverifiable)
+-- run. A background tabpage has no such problem: Neovim only ever draws the
+-- *current* tab's layout, so a window sitting on a tab you're not on is
+-- never drawn at all, full stop - no blending trickery needed. The
+-- create/switch-back (and later, close) round trips happen synchronously
+-- with 'eventignore' set, so no autocmd or visible redraw happens in
+-- between.
+--
+-- An oversized size request is silently clamped to the real screen size by
+-- Neovim (tested: no error, nvim_win_get_height reports the clamped value)
+-- - no manual clamping needed, but the clamped size is read back so PTY
+-- sizing and tail polling stay consistent with what the grid can actually
+-- hold.
 local function open_host_win(term_buf, viewport_lines)
+  local orig_tab = vim.api.nvim_get_current_tabpage()
+  local orig_ei = vim.o.eventignore
+  vim.o.eventignore = "all"
+
+  vim.cmd("tabnew")
+  local host_tab = vim.api.nvim_get_current_tabpage()
   local win = vim.api.nvim_open_win(term_buf, false, {
     relative = "editor",
     row = 0,
@@ -69,12 +88,36 @@ local function open_host_win(term_buf, viewport_lines)
     width = VIEWPORT_COLS,
     height = viewport_lines,
     style = "minimal",
-    focusable = false,
-    zindex = 1,
     border = "none",
   })
-  vim.wo[win].winblend = 100
-  return win, vim.api.nvim_win_get_width(win), vim.api.nvim_win_get_height(win)
+  local cols, rows = vim.api.nvim_win_get_width(win), vim.api.nvim_win_get_height(win)
+
+  vim.api.nvim_set_current_tabpage(orig_tab)
+  vim.o.eventignore = orig_ei
+
+  return win, host_tab, cols, rows
+end
+
+-- Closes a job's hidden tabpage (and every window on it, including the
+-- leftover blank window `tabnew` itself created). Briefly switches to it to
+-- run `:tabclose` (there's no tabpage-targeted API equivalent), then
+-- switches back - wrapped in 'eventignore' like open_host_win, so this is
+-- as invisible/side-effect-free as the creation round trip.
+local function close_host_tab(host_tab)
+  if not (host_tab and vim.api.nvim_tabpage_is_valid(host_tab)) then
+    return
+  end
+  local orig_tab = vim.api.nvim_get_current_tabpage()
+  local orig_ei = vim.o.eventignore
+  vim.o.eventignore = "all"
+
+  vim.api.nvim_set_current_tabpage(host_tab)
+  pcall(vim.cmd, "tabclose")
+  if vim.api.nvim_tabpage_is_valid(orig_tab) then
+    vim.api.nvim_set_current_tabpage(orig_tab)
+  end
+
+  vim.o.eventignore = orig_ei
 end
 
 -- on_output(lines) fires periodically while the job runs.
@@ -82,7 +125,7 @@ end
 function M.start(bufnr, cmd_text, cwd, viewport_lines, on_output, on_done)
   viewport_lines = viewport_lines or DEFAULT_VIEWPORT_LINES
   local term_buf = vim.api.nvim_create_buf(false, true)
-  local host_win, cols, rows = open_host_win(term_buf, viewport_lines)
+  local host_win, host_tab, cols, rows = open_host_win(term_buf, viewport_lines)
   local job_id
 
   vim.api.nvim_buf_call(term_buf, function()
@@ -94,9 +137,7 @@ function M.start(bufnr, cmd_text, cwd, viewport_lines, on_output, on_done)
         vim.schedule(function()
           local lines = tail(term_buf, rows)
           on_done(lines, code)
-          if vim.api.nvim_win_is_valid(host_win) then
-            pcall(vim.api.nvim_win_close, host_win, true)
-          end
+          close_host_tab(host_tab)
           if vim.api.nvim_buf_is_valid(term_buf) then
             vim.api.nvim_buf_delete(term_buf, { force = true })
           end
@@ -107,7 +148,7 @@ function M.start(bufnr, cmd_text, cwd, viewport_lines, on_output, on_done)
   end)
 
   if not job_id or job_id <= 0 then
-    pcall(vim.api.nvim_win_close, host_win, true)
+    close_host_tab(host_tab)
     vim.api.nvim_buf_delete(term_buf, { force = true })
     return nil
   end
@@ -126,16 +167,14 @@ function M.start(bufnr, cmd_text, cwd, viewport_lines, on_output, on_done)
     end)
   end)
 
-  M.jobs[job_id] = { bufnr = bufnr, term_buf = term_buf, timer = timer, host_win = host_win }
+  M.jobs[job_id] = { bufnr = bufnr, term_buf = term_buf, timer = timer, host_win = host_win, host_tab = host_tab }
   return job_id, pid
 end
 
 local function stop_job(job_id, job)
   stop_polling(job_id)
   pcall(vim.fn.jobstop, job_id)
-  if job.host_win and vim.api.nvim_win_is_valid(job.host_win) then
-    pcall(vim.api.nvim_win_close, job.host_win, true)
-  end
+  close_host_tab(job.host_tab)
   if job.term_buf and vim.api.nvim_buf_is_valid(job.term_buf) then
     pcall(vim.api.nvim_buf_delete, job.term_buf, { force = true })
   end
