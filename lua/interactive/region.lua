@@ -34,17 +34,21 @@ local function with_cursors_preserved(bufnr, fn)
   end
 end
 
-function M.create(bufnr, instr_row, pid)
+-- output_row defaults to instr_row (single-line instructions); multi-line
+-- instructions pass their last physical row instead, so the output lands
+-- after the whole instruction rather than right after its first line.
+function M.create(bufnr, instr_row, pid, output_row)
+  output_row = output_row or instr_row
   local start_line = "``` process " .. pid
   local end_line = "``` end " .. pid
   with_cursors_preserved(bufnr, function()
-    vim.api.nvim_buf_set_lines(bufnr, instr_row + 1, instr_row + 1, false, { start_line, end_line })
+    vim.api.nvim_buf_set_lines(bufnr, output_row + 1, output_row + 1, false, { start_line, end_line })
   end)
 
   return {
     instr_mark = vim.api.nvim_buf_set_extmark(bufnr, ns, instr_row, 0, {}),
-    start_mark = vim.api.nvim_buf_set_extmark(bufnr, ns, instr_row + 1, 0, {}),
-    end_mark = vim.api.nvim_buf_set_extmark(bufnr, ns, instr_row + 2, 0, {}),
+    start_mark = vim.api.nvim_buf_set_extmark(bufnr, ns, output_row + 1, 0, {}),
+    end_mark = vim.api.nvim_buf_set_extmark(bufnr, ns, output_row + 2, 0, {}),
   }
 end
 
