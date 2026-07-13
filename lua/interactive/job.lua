@@ -12,7 +12,7 @@
 -- `ttv`, `cheat`) resolve, the same as if typed at a real prompt.
 local M = {}
 
-M.jobs = {} -- job_id -> { bufnr, term_buf, timer }
+M.jobs = {} -- job_id -> { bufnr, term_buf, timer, host_win }
 
 local DEFAULT_VIEWPORT_LINES = 50
 local VIEWPORT_COLS = 100
@@ -40,11 +40,49 @@ local function stop_polling(job_id)
   end
 end
 
+-- A terminal buffer's actual rendering grid (what its lines mirror, distinct
+-- from the PTY's ioctl window size) is sized from whichever window is
+-- displaying it *at creation time*, and jobresize() alone does not grow it
+-- afterwards - confirmed by testing that a never-displayed terminal stays
+-- pinned to a small default grid (5 rows in a headless run) no matter what
+-- jobresize() is told, even though the PTY-level size it reports to the
+-- child process (e.g. via `stty size`) does update correctly. A full-screen
+-- TUI's actual on-screen size is dictated by that grid, not the PTY ioctl,
+-- so it renders cramped even though the child "knows" the bigger size.
+--
+-- Fix: host the buffer in a real floating window sized to the desired
+-- viewport before starting the job, and keep that window open for the job's
+-- whole lifetime - closing it stops the terminal from updating its buffer
+-- content at all (tested: content freezes blank), so it can't be a
+-- create-then-close step. `winblend = 100` plus `focusable = false` makes it
+-- fully invisible/inert without ever taking it off-screen, which Neovim
+-- would otherwise clamp back onto the visible area anyway. An
+-- oversized request is silently clamped to the real screen size (tested: no
+-- error, nvim_win_get_height reports the clamped value) - no manual
+-- clamping needed, but the clamped size is read back so PTY sizing and tail
+-- polling stay consistent with what the grid can actually hold.
+local function open_host_win(term_buf, viewport_lines)
+  local win = vim.api.nvim_open_win(term_buf, false, {
+    relative = "editor",
+    row = 0,
+    col = 0,
+    width = VIEWPORT_COLS,
+    height = viewport_lines,
+    style = "minimal",
+    focusable = false,
+    zindex = 1,
+    border = "none",
+  })
+  vim.wo[win].winblend = 100
+  return win, vim.api.nvim_win_get_width(win), vim.api.nvim_win_get_height(win)
+end
+
 -- on_output(lines) fires periodically while the job runs.
 -- on_done(lines, exit_code) fires once, after the job exits.
 function M.start(bufnr, cmd_text, cwd, viewport_lines, on_output, on_done)
   viewport_lines = viewport_lines or DEFAULT_VIEWPORT_LINES
   local term_buf = vim.api.nvim_create_buf(false, true)
+  local host_win, cols, rows = open_host_win(term_buf, viewport_lines)
   local job_id
 
   vim.api.nvim_buf_call(term_buf, function()
@@ -54,8 +92,11 @@ function M.start(bufnr, cmd_text, cwd, viewport_lines, on_output, on_done)
       on_exit = function(id, code)
         stop_polling(id)
         vim.schedule(function()
-          local lines = tail(term_buf, viewport_lines)
+          local lines = tail(term_buf, rows)
           on_done(lines, code)
+          if vim.api.nvim_win_is_valid(host_win) then
+            pcall(vim.api.nvim_win_close, host_win, true)
+          end
           if vim.api.nvim_buf_is_valid(term_buf) then
             vim.api.nvim_buf_delete(term_buf, { force = true })
           end
@@ -66,31 +107,35 @@ function M.start(bufnr, cmd_text, cwd, viewport_lines, on_output, on_done)
   end)
 
   if not job_id or job_id <= 0 then
+    pcall(vim.api.nvim_win_close, host_win, true)
     vim.api.nvim_buf_delete(term_buf, { force = true })
     return nil
   end
 
-  -- Never displayed in a window, so the PTY size defaults to whatever
-  -- Neovim picks for an invisible terminal; pin it to our desired viewport
-  -- explicitly rather than relying on that default.
-  pcall(vim.fn.jobresize, job_id, VIEWPORT_COLS, viewport_lines)
+  -- Also pin the PTY ioctl size to match the grid, so the child process's
+  -- own notion of terminal size (COLUMNS/LINES, `stty size`, etc.) agrees
+  -- with what's actually captured.
+  pcall(vim.fn.jobresize, job_id, cols, rows)
 
   local pid = vim.fn.jobpid(job_id)
 
   local timer = vim.uv.new_timer()
   timer:start(POLL_MS, POLL_MS, function()
     vim.schedule(function()
-      on_output(tail(term_buf, viewport_lines))
+      on_output(tail(term_buf, rows))
     end)
   end)
 
-  M.jobs[job_id] = { bufnr = bufnr, term_buf = term_buf, timer = timer }
+  M.jobs[job_id] = { bufnr = bufnr, term_buf = term_buf, timer = timer, host_win = host_win }
   return job_id, pid
 end
 
 local function stop_job(job_id, job)
   stop_polling(job_id)
   pcall(vim.fn.jobstop, job_id)
+  if job.host_win and vim.api.nvim_win_is_valid(job.host_win) then
+    pcall(vim.api.nvim_win_close, job.host_win, true)
+  end
   if job.term_buf and vim.api.nvim_buf_is_valid(job.term_buf) then
     pcall(vim.api.nvim_buf_delete, job.term_buf, { force = true })
   end
