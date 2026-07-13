@@ -133,18 +133,32 @@ local function jump_to_bufnr(bufnr)
   return false
 end
 
--- Switches to a running job's hidden tab and drops straight into terminal
--- mode, so its keystrokes go straight to the process (e.g. driving lazygit
--- interactively) instead of just watching the tailed output in the
--- notebook. <C-e> (mapped globally in telescope.lua) exits terminal mode
--- from there as usual; the buffer-local keymap set in M.start jumps back.
+-- Opens a *new* tab (rather than switching to the job's permanent hidden
+-- one) showing its terminal buffer full-size, and drops straight into
+-- terminal mode - so keystrokes go straight to the process (e.g. driving
+-- lazygit interactively) instead of just watching the tailed output in the
+-- notebook. A fresh tab rather than jumping to the hidden tab keeps this
+-- adjacent to wherever the user already is (gt/gT-friendly), rather than
+-- teleporting to wherever that tab happened to land in the tabline.
+--
+-- The same buffer ends up briefly shown in two windows at once: this new
+-- one, and the permanent hidden one on host_tab that must stay alive for
+-- the job's whole lifetime (see open_host_win). Neovim resizes a terminal's
+-- PTY/grid to match whichever window showing it was most recently
+-- current/resized - confirmed by testing that showing the buffer in a
+-- bigger window grows the grid, and closing that window reverts it back to
+-- whatever the remaining (permanent, fixed-size) window is. So this
+-- actually gets the interactive session more screen space while focused,
+-- with no lasting effect on the notebook's output-region sizing once
+-- closed - the buffer-local keymap set in M.start closes this transient tab
+-- again on the way back out.
 function M.focus(job_id)
   local job = M.jobs[job_id]
-  if not job or not vim.api.nvim_tabpage_is_valid(job.host_tab) then
+  if not job or not vim.api.nvim_buf_is_valid(job.term_buf) then
     return false
   end
-  vim.api.nvim_set_current_tabpage(job.host_tab)
-  vim.api.nvim_set_current_win(job.host_win)
+  vim.cmd("tabnew")
+  vim.api.nvim_win_set_buf(0, job.term_buf)
   vim.cmd("startinsert")
   return true
 end
@@ -156,7 +170,14 @@ function M.start(bufnr, cmd_text, cwd, viewport_lines, on_output, on_done)
   local term_buf = vim.api.nvim_create_buf(false, true)
   local host_win, host_tab, cols, rows = open_host_win(term_buf, viewport_lines)
   vim.keymap.set("n", "<leader>ii", function()
+    -- Only close the tab we're leaving if it's the transient one M.focus
+    -- opened, never the permanent host_tab (reachable here only if
+    -- something else navigated to it directly).
+    local viewing_tab = vim.api.nvim_get_current_tabpage()
     jump_to_bufnr(bufnr)
+    if viewing_tab ~= host_tab and vim.api.nvim_tabpage_is_valid(viewing_tab) then
+      pcall(vim.cmd, "tabclose " .. vim.api.nvim_tabpage_get_number(viewing_tab))
+    end
   end, { buffer = term_buf, desc = "Return to notebook buffer" })
   local job_id
 
