@@ -36,7 +36,7 @@ vim.api.nvim_set_hl(0, "HlFilePath", { fg = "#9ccfd8", underline = true })   -- 
 vim.api.nvim_set_hl(0, "HlClickupId", { fg = "#c4a7e7", bold = true })       -- ClickUp task IDs (rose-pine iris)
 vim.api.nvim_set_hl(0, "HlErrorWord",   { fg = "#eb6f92", bold = true })     -- error/fail/exception/... (rose-pine love)
 vim.api.nvim_set_hl(0, "HlWarnWord",    { fg = "#f6c177", bold = true })     -- warn/warning(s) (rose-pine gold)
-vim.api.nvim_set_hl(0, "HlSuccessWord", { fg = "#9ccfd8", bold = true })     -- success/ok/done/... (rose-pine foam)
+vim.api.nvim_set_hl(0, "HlSuccessWord", { fg = "#56d364", bold = true })     -- success/ok/done/... (green)
 vim.api.nvim_set_hl(0, "HlTodoMarker",  { fg = "#31748f", bold = true })       -- TODO (rose-pine pine, bold blue)
 vim.api.nvim_set_hl(0, "HlFixmeMarker", { fg = "#eb6f92", bold = true })       -- FIXME (rose-pine love, bold red)
 vim.api.nvim_set_hl(0, "HlNoteMarker",  { fg = "#f6c177" })                    -- NOTE (rose-pine gold, non-bold yellow)
