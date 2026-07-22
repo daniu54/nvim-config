@@ -8,7 +8,7 @@ vim.api.nvim_create_autocmd("TermOpen", {
   pattern = "*",
   callback = function()
     vim.opt_local.number = true
-    vim.opt_local.relativenumber = true
+    vim.opt_local.relativenumber = false
     -- Seed t-mode highlight; ModeChanged will swap it when entering nt (see below)
     vim.wo.winhighlight = "Visual:NvimTerminalTVisual"
   end,
@@ -108,7 +108,7 @@ if vim.loop.os_uname().sysname == "Windows" then
 end
 
 vim.opt.nu = true
-vim.opt.relativenumber = true
+vim.opt.relativenumber = false
 
 vim.opt.tabstop = 4
 vim.opt.softtabstop = 4
