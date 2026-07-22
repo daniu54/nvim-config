@@ -33,6 +33,7 @@ vim.api.nvim_set_hl(0, "HlDate",    { fg = "#9ccfd8" })                      -- 
 vim.api.nvim_set_hl(0, "HlVersion", { fg = "#31748f", bold = true })         -- version numbers (rose-pine pine, bold blue)
 vim.api.nvim_set_hl(0, "HlUrl",     { fg = "#31748f", underline = true })    -- URLs (rose-pine pine, underline)
 vim.api.nvim_set_hl(0, "HlFilePath", { fg = "#9ccfd8", underline = true })   -- file paths / bare filenames (rose-pine foam, underline)
+vim.api.nvim_set_hl(0, "HlClickupId", { fg = "#c4a7e7", bold = true })       -- ClickUp task IDs (rose-pine iris)
 vim.api.nvim_set_hl(0, "HlErrorWord",   { fg = "#eb6f92", bold = true })     -- error/fail/exception/... (rose-pine love)
 vim.api.nvim_set_hl(0, "HlWarnWord",    { fg = "#f6c177", bold = true })     -- warn/warning(s) (rose-pine gold)
 vim.api.nvim_set_hl(0, "HlSuccessWord", { fg = "#9ccfd8", bold = true })     -- success/ok/done/... (rose-pine foam)

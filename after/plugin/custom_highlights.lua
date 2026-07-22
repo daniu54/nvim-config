@@ -54,6 +54,10 @@ local GROUPS = {
     -- -command / --command words — must start a word (after whitespace or line
     -- start), same reasoning as slash-commands (avoid mid-token hyphens)
     { name = 'HlFlagCommand',  pattern = [[\(^\|\s\)\zs--\?[A-Za-z_][-A-Za-z0-9_]*]], priority = 13 },
+    -- ClickUp task IDs: alphanumeric tokens mixing at least one digit and one
+    -- letter (e.g. `86c8fxwd0`), mirroring looksLikeTaskID() in
+    -- clickup-terminal's cmd/resolve.go
+    { name = 'HlClickupId', pattern = [=[\<\%([0-9A-Za-z]*\d\)\@=\%([0-9A-Za-z]*[A-Za-z]\)\@=[0-9A-Za-z]\+\>]=], priority = 13 },
     -- error / warning / success keywords — above quotes/escapes so they still
     -- stand out inside quoted log lines, but below the TODO-style markers
     { name = 'HlErrorWord',   pattern = [=[\c\<\%(errors\?\|err\|fails\?\|failed\|failure\|exception\|fatal\|panic\|denied\)\>]=], priority = 15 },
