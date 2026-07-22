@@ -62,7 +62,7 @@ local GROUPS = {
     -- stand out inside quoted log lines, but below the TODO-style markers
     { name = 'HlErrorWord',   pattern = [=[\c\<\%(errors\?\|err\|fails\?\|failed\|failure\|exception\|fatal\|panic\|denied\)\>]=], priority = 15 },
     { name = 'HlWarnWord',    pattern = [=[\c\<warn\%(ing\)\?s\?\>]=], priority = 15 },
-    { name = 'HlSuccessWord', pattern = [=[\c\<\%(success\%(ful\%(ly\)\?\)\?\|succeeded\|passed\|ok\|done\|completed\)\>]=], priority = 15 },
+    { name = 'HlSuccessWord', pattern = [=[\c\<\%(success\%(ful\%(ly\)\?\)\?\|succeeded\|pass\%(ed\)\?\|good\|ok\|done\|completed\)\>]=], priority = 15 },
     -- whole-line comments: gray, but lower priority than the groups above so
     -- quoted/parenthesised/slash content inside a comment still highlights
     { name = 'HlGrayComment',  pattern = [[^\s*\(#\|//\).*$]],          priority = 5 },
