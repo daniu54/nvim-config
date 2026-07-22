@@ -56,7 +56,7 @@ local GROUPS = {
     { name = 'HlFlagCommand',  pattern = [[\(^\|\s\)\zs--\?[A-Za-z_][-A-Za-z0-9_]*]], priority = 13 },
     -- error / warning / success keywords — above quotes/escapes so they still
     -- stand out inside quoted log lines, but below the TODO-style markers
-    { name = 'HlErrorWord',   pattern = [=[\c\<\%(error\|err\|fails\?\|failed\|failure\|exception\|fatal\|panic\|denied\)\>]=], priority = 15 },
+    { name = 'HlErrorWord',   pattern = [=[\c\<\%(errors\?\|err\|fails\?\|failed\|failure\|exception\|fatal\|panic\|denied\)\>]=], priority = 15 },
     { name = 'HlWarnWord',    pattern = [=[\c\<warn\%(ing\)\?s\?\>]=], priority = 15 },
     { name = 'HlSuccessWord', pattern = [=[\c\<\%(success\%(ful\%(ly\)\?\)\?\|succeeded\|passed\|ok\|done\|completed\)\>]=], priority = 15 },
     -- whole-line comments: gray, but lower priority than the groups above so
