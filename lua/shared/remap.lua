@@ -437,6 +437,10 @@ vim.keymap.set("n", "<C-w>e", function() vim.cmd("wincmd x") end, { desc = "Swap
 vim.keymap.set({"n"}, "H", ":bp<CR>", { desc = "Move to previous buffer" })
 vim.keymap.set({"n"}, "L", ":bn<CR>", { desc = "Move to next buffer" })
 
+-- reverse gt/gT (swap next/previous tab direction)
+vim.keymap.set("n", "gt", ":tabprevious<CR>", { desc = "Go to previous tab (reversed)" })
+vim.keymap.set("n", "gT", ":tabnext<CR>", { desc = "Go to next tab (reversed)" })
+
 -- Smart search: letters/digits only → literal (\V), else regex.
 -- Case is handled by ignorecase+smartcase in set.lua.
 -- If the user manually prefixes \v/\V/\c/\C, we leave it alone.
