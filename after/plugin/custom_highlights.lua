@@ -68,6 +68,12 @@ local GROUPS = {
     -- whole-line comments: gray, but lower priority than the groups above so
     -- quoted/parenthesised/slash content inside a comment still highlights
     { name = 'HlGrayComment',  pattern = [[^\s*\(#\|//\).*$]],          priority = 5 },
+    -- list items whose text starts with "#" (e.g. clickuptodos' commented-out
+    -- list-item instructions, "- # /new ..." — see clickup-terminal's
+    -- commentOutInstructionLine): same whole-line gray treatment as a plain
+    -- "#"/"//" comment above, just with a leading list/checklist marker
+    -- (-, *, +, or an ordered "1."/"1)", optionally with a "[ ]"/"[x]" box)
+    { name = 'HlGrayComment',  pattern = [=[^\s*\%([-*+]\|\d\+[.)]\)\s\+\%(\[[ xX]\]\s\+\)\?#.*$]=], priority = 5 },
     -- TODO / FIXME / NOTE / BUG markers — matched anywhere, even mid-word
     -- (e.g. `testTODObuh`), and even inside comments/strings, hence top priority
     { name = 'HlHighlight',       pattern = [[TODO]],                  priority = 20 },
