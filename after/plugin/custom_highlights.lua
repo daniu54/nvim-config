@@ -74,6 +74,13 @@ local GROUPS = {
     -- "#"/"//" comment above, just with a leading list/checklist marker
     -- (-, *, +, or an ordered "1."/"1)", optionally with a "[ ]"/"[x]" box)
     { name = 'HlGrayComment',  pattern = [=[^\s*\%([-*+]\|\d\+[.)]\)\s\+\%(\[[ xX]\]\s\+\)\?#.*$]=], priority = 5 },
+    -- trailing "# " comment, anywhere in a line (not just at the start):
+    -- everything from the "#" to end of line grays out. Above priority 13
+    -- (commands/quotes/paths/etc.) so those don't "shine through" a trailing
+    -- comment the way they intentionally do for the whole-line comment rules
+    -- above — but still below the success/error/info tier (15) and TODO/
+    -- FIXME/NOTE/BUG (20), so those still stand out even inside a comment.
+    { name = 'HlGrayComment',  pattern = [=[#\s.*$]=],                    priority = 14 },
     -- TODO / FIXME / NOTE / BUG markers — matched anywhere, even mid-word
     -- (e.g. `testTODObuh`), and even inside comments/strings, hence top priority
     { name = 'HlHighlight',       pattern = [[TODO]],                  priority = 20 },
