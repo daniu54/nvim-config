@@ -248,19 +248,80 @@ local function lsp_enable_zig(quiet)
     ensure_autostart('zig', lsp_enable_zig)
 end
 
+-- C# LSP (csharp-ls). One-time setup: install via :MasonInstall csharp-ls
+--
+-- csharp-ls is itself a .NET tool (a hostfxr apphost), so it needs a
+-- dotnet *runtime* to execute at all, separate from whatever dotnet is used
+-- to build the project. This machine has a native Linux dotnet SDK
+-- installed via apt (/usr/bin/dotnet, dotnet-sdk-7.0) purely so csharp-ls
+-- (and other Linux-side tooling) has a runtime to run on — the project
+-- itself is still built with the Windows-side dotnet.exe/Unity.
+--
+-- csharp-ls loads the project via Buildalyzer (an MSBuild design-time
+-- build), so it needs the .sln/.csproj to resolve cleanly under Linux.
+-- Unity-generated .csproj files reference the Unity Editor's managed DLLs
+-- via absolute Windows HintPaths (e.g. D:\unity\Editor\...\UnityEngine.dll).
+-- MSBuild does not translate those into /mnt/d/... on Linux, so those
+-- references will fail to resolve and UnityEngine/UnityEditor types will
+-- show as errors — this is a real limitation of the WSL split, not a
+-- config bug, and is expected until/unless the generated csproj paths are
+-- made WSL-aware.
+local function lsp_enable_csharp(quiet)
+    local mason_bin = vim.fn.stdpath('data') .. '/mason/bin/csharp-ls'
+    local cmd = vim.fn.executable(mason_bin) == 1 and mason_bin or 'csharp-ls'
+
+    if vim.fn.executable(cmd) == 0 then
+        vim.notify('csharp-ls not found. Run :MasonInstall csharp-ls first.', vim.log.levels.ERROR)
+        return
+    end
+
+    if vim.fn.executable('dotnet') == 0 then
+        vim.notify('dotnet not found on $PATH (csharp-ls needs a Linux dotnet runtime to run)', vim.log.levels.ERROR)
+        return
+    end
+
+    -- search upward from the buffer's own directory, not nvim's cwd (which
+    -- may not match if nvim wasn't launched from inside the project)
+    local root = vim.fs.dirname(
+        vim.fs.find(function(name)
+            return name:match('%.sln$') or name == '.git'
+        end, {
+            upward = true,
+            path = vim.fs.dirname(vim.api.nvim_buf_get_name(0)),
+        })[1]
+    ) or vim.uv.cwd()
+
+    vim.lsp.start({
+        name     = 'csharp-ls',
+        cmd      = { cmd },
+        cmd_cwd  = root,
+        root_dir = root,
+        capabilities = require('cmp_nvim_lsp').default_capabilities(),
+        on_attach = on_attach,
+    })
+
+    if not quiet then
+        vim.notify('LSP (csharp-ls) started\nroot: ' .. root, vim.log.levels.INFO)
+    end
+
+    ensure_autostart('cs', lsp_enable_csharp)
+end
+
 local function lsp_enable()
     local ft = vim.bo.filetype
     if ft == 'python' then
         lsp_enable_python()
     elseif ft == 'zig' then
         lsp_enable_zig()
+    elseif ft == 'cs' then
+        lsp_enable_csharp()
     else
         vim.notify('LspEnable: no LSP configured for filetype "' .. ft .. '"', vim.log.levels.WARN)
     end
 end
 
 vim.api.nvim_create_user_command('LspEnable', lsp_enable, {
-    desc = 'Start LSP for current buffer (Python: pyright, Zig: zls)',
+    desc = 'Start LSP for current buffer (Python: pyright, Zig: zls, C#: csharp-ls)',
 })
 
 vim.keymap.set('n', '<leader>le', lsp_enable, { desc = 'Enable LSP for current buffer' })
