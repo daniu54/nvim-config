@@ -41,10 +41,12 @@ local GROUPS = {
     { name = 'HlHighlight', pattern = [=[https\?://[^[:space:]'"]\+]=], priority = 11 },
     -- "quoted", 'quoted', `quoted`
     { name = 'HlQuotedString', pattern = [["[^"]*"\|'[^']*'\|`[^`]*`]], priority = 13 },
-    -- (parenthesised text) — non-greedy so `(a) x (b)` gives two matches, not one
-    { name = 'HlParenText',    pattern = [[(.\{-})]],                   priority = 12 },
+    -- (parenthesised text) — non-greedy so `(a) x (b)` gives two matches, not one.
+    -- Lowest priority of all groups so content inside parens/brackets (numbers,
+    -- error words, paths, ...) still highlights as itself rather than as paren/bracket text.
+    { name = 'HlParenText',    pattern = [[(.\{-})]],                   priority = 1 },
     -- [bracketed text] — same treatment as parenthesised text above
-    { name = 'HlBracketText', pattern = [=[\[.\{-}\]]=], priority = 12 },
+    { name = 'HlBracketText', pattern = [=[\[.\{-}\]]=], priority = 1 },
     -- literal \n / \t escape sequences — highest priority so they still stand
     -- out even inside an already-highlighted quoted string
     { name = 'HlEscapeSequence', pattern = [=[\\[nt]]=],                priority = 14 },
