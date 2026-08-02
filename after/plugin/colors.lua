@@ -30,17 +30,12 @@ vim.api.nvim_set_hl(0, "HlGrayComment",  { fg = "#6e6a86" })    -- whole-line # 
 vim.api.nvim_set_hl(0, "HlNumber",  { link = "Number" })                     -- plain numbers (colorscheme's Number color)
 vim.api.nvim_set_hl(0, "HlTime",    { fg = "#9ccfd8" })                      -- HH:MM times (rose-pine foam)
 vim.api.nvim_set_hl(0, "HlDate",    { fg = "#9ccfd8" })                      -- YYYY-MM-DD dates/timestamps (rose-pine foam)
-vim.api.nvim_set_hl(0, "HlVersion", { fg = "#31748f", bold = true })         -- version numbers (rose-pine pine, bold blue)
-vim.api.nvim_set_hl(0, "HlUrl",     { fg = "#31748f", underline = true })    -- URLs (rose-pine pine, underline)
+vim.api.nvim_set_hl(0, "HlHighlight", { fg = "#31748f" })                   -- shared "highlight" group (rose-pine pine, not bold): TODO, versions, URLs
 vim.api.nvim_set_hl(0, "HlFilePath", { fg = "#9ccfd8", underline = true })   -- file paths / bare filenames (rose-pine foam, underline)
 vim.api.nvim_set_hl(0, "HlClickupId", { fg = "#c4a7e7", bold = true })       -- ClickUp task IDs (rose-pine iris)
-vim.api.nvim_set_hl(0, "HlErrorWord",   { fg = "#eb6f92", bold = true })     -- error/fail/exception/... (rose-pine love)
-vim.api.nvim_set_hl(0, "HlWarnWord",    { fg = "#f6c177", bold = true })     -- warn/warning(s) (rose-pine gold)
-vim.api.nvim_set_hl(0, "HlSuccessWord", { fg = "#56d364", bold = true })     -- success/ok/done/... (green)
-vim.api.nvim_set_hl(0, "HlTodoMarker",  { fg = "#31748f", bold = true })       -- TODO (rose-pine pine, bold blue)
-vim.api.nvim_set_hl(0, "HlFixmeMarker", { fg = "#eb6f92", bold = true })       -- FIXME (rose-pine love, bold red)
-vim.api.nvim_set_hl(0, "HlNoteMarker",  { fg = "#f6c177" })                    -- NOTE (rose-pine gold, non-bold yellow)
-vim.api.nvim_set_hl(0, "HlBugMarker",   { fg = "#f59e0b", bold = true })       -- BUG (amber/orange, bold)
+vim.api.nvim_set_hl(0, "HlNegative",    { fg = "#eb6f92", bold = true })     -- shared "negative" group (rose-pine love, bold): error/fail/bug/blocked/issue/FIXME/BUG/...
+vim.api.nvim_set_hl(0, "HlSuccess",     { fg = "#56d364" })                  -- shared "success" group (green, not bold): success/ok/done/completed/closed/...
+vim.api.nvim_set_hl(0, "HlLesserHighlight", { fg = "#f6c177" })              -- shared "lesser highlight" group (rose-pine gold, not bold): warn/NOTE
 
 -- Inner nvim ($NVIM set = launched from inside another nvim's terminal buffer):
 -- override Visual + Cursor globally so editing colours are green.

@@ -21,7 +21,7 @@ local GROUPS = {
     -- ISO-ish dates / timestamps: YYYY-MM-DD with optional time-of-day
     { name = 'HlDate', pattern = [=[\d\{4}-\d\{2}-\d\{2}\%([ T]\d\{2}:\d\{2}\%(:\d\{2}\)\?\%(\.\d\+\)\?Z\?\)\?]=], priority = 8 },
     -- semantic-ish version numbers (1.2.3, v1.2, 1.2.3-beta.1)
-    { name = 'HlVersion', pattern = [=[v\?\d\+\.\d\+\%(\.\d\+\)\?\%(-[[:alnum:]._-]\+\)\?]=], priority = 9 },
+    { name = 'HlHighlight', pattern = [=[v\?\d\+\.\d\+\%(\.\d\+\)\?\%(-[[:alnum:]._-]\+\)\?]=], priority = 9 },
     -- file paths (with a directory component, unix or windows-style) and
     -- bare filenames, both with an optional :line or :line:col suffix.
     -- Extension must start with a letter so plain decimals (`3.14`) don't
@@ -38,7 +38,7 @@ local GROUPS = {
     -- URLs — higher priority than plain paths, so a URL's own path segment
     -- (e.g. the `/foo/bar.tar.gz` in `https://example.com/foo/bar.tar.gz`)
     -- doesn't get re-colored as a bare file path
-    { name = 'HlUrl', pattern = [=[https\?://[^[:space:]'"]\+]=], priority = 11 },
+    { name = 'HlHighlight', pattern = [=[https\?://[^[:space:]'"]\+]=], priority = 11 },
     -- "quoted", 'quoted', `quoted`
     { name = 'HlQuotedString', pattern = [["[^"]*"\|'[^']*'\|`[^`]*`]], priority = 13 },
     -- (parenthesised text) — non-greedy so `(a) x (b)` gives two matches, not one
@@ -60,18 +60,18 @@ local GROUPS = {
     { name = 'HlClickupId', pattern = [=[\<\%([0-9A-Za-z]*\d\)\@=\%([0-9A-Za-z]*[A-Za-z]\)\@=[0-9A-Za-z]\+\>]=], priority = 13 },
     -- error / warning / success keywords — above quotes/escapes so they still
     -- stand out inside quoted log lines, but below the TODO-style markers
-    { name = 'HlErrorWord',   pattern = [=[\c\<\%(errors\?\|err\|fails\?\|failed\|failure\|exception\|fatal\|panic\|denied\)\>]=], priority = 15 },
-    { name = 'HlWarnWord',    pattern = [=[\c\<warn\%(ing\)\?s\?\>]=], priority = 15 },
-    { name = 'HlSuccessWord', pattern = [=[\c\<\%(success\%(ful\%(ly\)\?\)\?\|succeeded\|pass\%(ed\)\?\|good\|ok\|done\|completed\)\>]=], priority = 15 },
+    { name = 'HlNegative',        pattern = [=[\c\<\%(errors\?\|err\|fails\?\|failed\|failure\|exception\|fatal\|panic\|denied\|bugs\?\|blocked\|issues\?\)\>]=], priority = 15 },
+    { name = 'HlLesserHighlight', pattern = [=[\c\<warn\%(ing\)\?s\?\>]=], priority = 15 },
+    { name = 'HlSuccess',         pattern = [=[\c\<\%(success\%(ful\%(ly\)\?\)\?\|succeeded\|pass\%(ed\)\?\|good\|ok\|done\|completed\|closed\)\>]=], priority = 15 },
     -- whole-line comments: gray, but lower priority than the groups above so
     -- quoted/parenthesised/slash content inside a comment still highlights
     { name = 'HlGrayComment',  pattern = [[^\s*\(#\|//\).*$]],          priority = 5 },
     -- TODO / FIXME / NOTE / BUG markers — matched anywhere, even mid-word
     -- (e.g. `testTODObuh`), and even inside comments/strings, hence top priority
-    { name = 'HlTodoMarker',  pattern = [[TODO]],                      priority = 20 },
-    { name = 'HlFixmeMarker', pattern = [[FIXME]],                     priority = 20 },
-    { name = 'HlNoteMarker',  pattern = [[NOTE]],                      priority = 20 },
-    { name = 'HlBugMarker',   pattern = [[BUG]],                       priority = 20 },
+    { name = 'HlHighlight',       pattern = [[TODO]],                  priority = 20 },
+    { name = 'HlNegative',        pattern = [[FIXME]],                 priority = 20 },
+    { name = 'HlLesserHighlight', pattern = [[NOTE]],                  priority = 20 },
+    { name = 'HlNegative',        pattern = [[BUG]],                   priority = 20 },
 }
 
 local function apply_matches()
