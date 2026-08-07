@@ -11,6 +11,7 @@ vim.api.nvim_create_autocmd("TermOpen", {
     vim.opt_local.relativenumber = false
     -- Seed t-mode highlight; ModeChanged will swap it when entering nt (see below)
     vim.wo.winhighlight = "Visual:NvimTerminalTVisual"
+    vim.api.nvim_set_hl(0, "StatusLine", { link = "NvimStatusLineDefault" })
   end,
 })
 
@@ -70,6 +71,7 @@ vim.api.nvim_create_autocmd("ModeChanged", {
       vim.wo.winhighlight = IS_INNER
         and "Visual:NvimTerminalTVisual"
         or  "Visual:NvimTerminalNVisual"
+      vim.api.nvim_set_hl(0, "StatusLine", { link = "NvimStatusLineTerminal" })
     end
   end,
 })
@@ -81,6 +83,7 @@ vim.api.nvim_create_autocmd("ModeChanged", {
     if vim.bo.buftype == "terminal" then
       vim.defer_fn(cursor_t, 50)
       vim.wo.winhighlight = "Visual:NvimTerminalTVisual"
+      vim.api.nvim_set_hl(0, "StatusLine", { link = "NvimStatusLineDefault" })
     end
   end,
 })
@@ -90,15 +93,9 @@ vim.api.nvim_create_autocmd("ModeChanged", {
   pattern = { "nt:*", "t:*" },
   callback = function()
     local new = vim.v.event.new_mode
-    if new ~= "nt" and new ~= "t" then cursor_reset() end
-  end,
-})
-
--- Re-enter terminal mode when nvim regains focus while a terminal buffer is active
-vim.api.nvim_create_autocmd("FocusGained", {
-  callback = function()
-    if vim.bo.buftype == "terminal" then
-      vim.cmd("startinsert")
+    if new ~= "nt" and new ~= "t" then
+      cursor_reset()
+      vim.api.nvim_set_hl(0, "StatusLine", { link = "NvimStatusLineDefault" })
     end
   end,
 })

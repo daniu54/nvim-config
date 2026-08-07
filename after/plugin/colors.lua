@@ -13,6 +13,15 @@ vim.api.nvim_set_hl(0, "CurSearch", { fg = "#1f1d2e", bg = "#eb6f92", bold = tru
 vim.api.nvim_set_hl(0, "NvimTerminalNVisual", { bg = "#3d2000" })  -- dark orange
 vim.api.nvim_set_hl(0, "NvimTerminalTVisual", { bg = "#0d3a0d" })  -- dark green
 
+-- StatusLine mode indicator: faded orange while in terminal-insert (t) mode
+-- ("--TERMINAL--"), default colorscheme styling everywhere else, including
+-- terminal-normal (nt) mode ("--NORMAL--"). set.lua's ModeChanged autocmds
+-- swap "StatusLine" between these two link targets.
+local statusline_default = vim.api.nvim_get_hl(0, { name = "StatusLine", link = false })
+vim.api.nvim_set_hl(0, "NvimStatusLineDefault", statusline_default)
+vim.api.nvim_set_hl(0, "NvimStatusLineTerminal", vim.tbl_extend("force", statusline_default, { bg = "#4d3319" }))
+vim.api.nvim_set_hl(0, "StatusLine", { link = "NvimStatusLineDefault" })
+
 -- Netrw dotfiles/dotdirs: shown muted in netrw tree (rose-pine muted)
 vim.api.nvim_set_hl(0, "NetrwDotFile", { fg = "#6e6a86" })           -- dotfiles
 vim.api.nvim_set_hl(0, "NetrwDotDir",  { fg = "#6e6a86", bold = true }) -- dotdirs (bold preserved)
