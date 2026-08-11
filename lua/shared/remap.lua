@@ -52,6 +52,11 @@ end
 vim.api.nvim_create_autocmd("FileType", {
   pattern = "netrw",
   callback = function()
+    -- netrw binds its quickhelp to <F1> by default, which is annoying to hit
+    -- accidentally. Move it to g? (vim convention for "show help") instead.
+    pcall(vim.keymap.del, "n", "<F1>", { buffer = true })
+    vim.keymap.set("n", "g?", "<Cmd>he netrw-quickhelp<CR>", { buffer = true, desc = "netrw: quick help" })
+
     -- yp: copy full path of file under cursor to Windows clipboard
     vim.keymap.set("n", "yp", function()
       local path = netrw_cursor_path()
