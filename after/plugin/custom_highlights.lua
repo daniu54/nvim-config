@@ -62,9 +62,9 @@ local GROUPS = {
     { name = 'HlClickupId', pattern = [=[\<\%([0-9A-Za-z]*\d\)\@=\%([0-9A-Za-z]*[A-Za-z]\)\@=[0-9A-Za-z]\+\>]=], priority = 13 },
     -- error / warning / success keywords — above quotes/escapes so they still
     -- stand out inside quoted log lines, but below the TODO-style markers
-    { name = 'HlNegative',        pattern = [=[\c\<\%(errors\?\|err\|fails\?\|failed\|failure\|exception\|fatal\|panic\|denied\|bugs\?\|blocked\|issues\?\)\>]=], priority = 15 },
+    { name = 'HlNegative',        pattern = [=[\c\<\%(errors\?\|err\|fails\?\|failed\|failure\|exception\|fatal\|panic\|denied\|bugs\?\|blocked\|issues\?\|stopped\|stops\?\)\>]=], priority = 15 },
     { name = 'HlLesserHighlight', pattern = [=[\c\<warn\%(ing\)\?s\?\>]=], priority = 15 },
-    { name = 'HlSuccess',         pattern = [=[\c\<\%(success\%(ful\%(ly\)\?\)\?\|succeeded\|pass\%(ed\)\?\|good\|ok\|done\|completed\|closed\)\>]=], priority = 15 },
+    { name = 'HlSuccess',         pattern = [=[\c\<\%(success\%(ful\%(ly\)\?\)\?\|succeeded\|pass\%(ed\)\?\|good\|ok\|done\|completed\|closed\|started\|starts\?\)\>]=], priority = 15 },
     -- whole-line comments: gray, but lower priority than the groups above so
     -- quoted/parenthesised/slash content inside a comment still highlights
     { name = 'HlGrayComment',  pattern = [[^\s*\(#\|//\).*$]],          priority = 5 },

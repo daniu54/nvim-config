@@ -57,6 +57,9 @@ vim.api.nvim_create_autocmd("FileType", {
     pcall(vim.keymap.del, "n", "<F1>", { buffer = true })
     vim.keymap.set("n", "g?", "<Cmd>he netrw-quickhelp<CR>", { buffer = true, desc = "netrw: quick help" })
 
+    -- <BS>: go up a directory (overrides the global half-page-scroll map)
+    vim.keymap.set("n", "<BS>", "<Plug>NetrwBrowseUpDir", { buffer = true, desc = "netrw: up a directory" })
+
     -- yp: copy full path of file under cursor to Windows clipboard
     vim.keymap.set("n", "yp", function()
       local path = netrw_cursor_path()
