@@ -3,6 +3,11 @@ local M = {}
 local TIMER_DIR = vim.fn.expand("~/.local/share/timers")
 local _tick = nil
 
+-- Thresholds (seconds of time left) driving colour and abbreviation.
+local URGENT_THRESHOLD = 5 * 60  -- red below this
+local WARN_THRESHOLD = 15 * 60   -- yellow below this; seconds shown below this
+local COARSE_THRESHOLD = 2 * 3600 -- above this, drop minutes too
+
 local function read_timers()
     local timers = {}
     local now = os.time()
@@ -35,12 +40,19 @@ local function read_timers()
     return timers
 end
 
+-- Precision follows urgency: seconds only in the last 15 minutes, minutes
+-- only under 2 hours, hours alone above that.
 local function fmt_remaining(secs)
     local h = math.floor(secs / 3600)
     local m = math.floor((secs % 3600) / 60)
     local s = math.floor(secs % 60)
-    if h > 0 then
-        return string.format("%dh%02dm%02ds", h, m, s)
+    if secs > COARSE_THRESHOLD then
+        return string.format("%dh", h)
+    elseif secs > WARN_THRESHOLD then
+        if h > 0 then
+            return string.format("%dh%02dm", h, m)
+        end
+        return string.format("%dm", m)
     elseif m > 0 then
         return string.format("%dm%02ds", m, s)
     else
@@ -61,23 +73,34 @@ local function fmt_overdue(secs)
     end
 end
 
+local function timer_hl(remaining)
+    if remaining <= URGENT_THRESHOLD then
+        return "%#TimerUrgent#"
+    elseif remaining <= WARN_THRESHOLD then
+        return "%#TimerWarn#"
+    end
+    return "%#TimerNormal#"
+end
+
 local function display_len(s)
     return vim.fn.strdisplaywidth(s:gsub("%%#[^#]*#", ""):gsub("%%%*", ""))
 end
 
 local function build_timer_parts(timers, include_comment)
     local parts = {}
-    for _, t in ipairs(timers) do
+    for i, t in ipairs(timers) do
         local rem
         if t.remaining <= 0 then
             rem = t.label .. "/" .. fmt_overdue(t.remaining)
         else
             rem = fmt_remaining(t.remaining)
         end
-        local urgent = t.remaining <= 60
-        local hl = urgent and "%#TimerUrgent#" or "%#TimerNormal#"
-        local suffix = (include_comment and t.comment ~= "") and (" " .. t.comment) or ""
-        table.insert(parts, hl .. " ⏱ " .. rem .. suffix .. " %*")
+        -- Only the next timer to fire is named; the rest are just countdowns.
+        local suffix = ""
+        if include_comment and i == 1 and t.comment ~= "" then
+            suffix = " " .. t.comment
+        end
+        table.insert(parts, timer_hl(t.remaining) .. " " .. rem .. suffix .. " %*")
     end
     return table.concat(parts, " │ ")
 end
@@ -98,6 +121,7 @@ end
 
 function M.setup()
     vim.api.nvim_set_hl(0, "TimerNormal", { fg = "#7dcfff", bold = true })
+    vim.api.nvim_set_hl(0, "TimerWarn", { fg = "#e0af68", bold = true })
     vim.api.nvim_set_hl(0, "TimerUrgent", { fg = "#f7768e", bold = true, reverse = true })
 
     vim.opt.statusline = build_statusline()
