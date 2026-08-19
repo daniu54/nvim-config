@@ -29,6 +29,8 @@ lua/shared/
   wt_colors.lua             — Windows Terminal background color sync
   copilot.lua               — shared Copilot infra (bootstrap, sensitive-file check, opt-in helper, <Right>/<S-Right>)
 after/plugin/
+  autosave.lua              — autosave file-backed buffers (:AutoSaveToggle)
+  markdown_convert.lua      — :ConvertToPdf/:ConvertToTex/:ConvertToWord via mdpdf
   colors.lua                — colorscheme (rose-pine) + all custom highlight groups (Search, terminal visual, NetrwDotfile, etc.)
   conform.lua               — formatter config
   harpoon.lua               — harpoon2 config
@@ -40,6 +42,45 @@ after/plugin/
 plugin/
   packer_compiled.lua       — gitignored, stale packer artifact
 ```
+
+## markdown export (:ConvertToPdf / :ConvertToTex / :ConvertToWord)
+
+`after/plugin/markdown_convert.lua` drives the `mdpdf` binary
+(`/mnt/d/Programming/claude-projects/markdown-to-pdf`, override with
+`$MDPDF_BIN`). The export lands **beside the source file**; the LaTeX/mermaid
+artifacts stay in a cached `/tmp/mdpdf-build/<stem>-<hash>` directory that is
+never deleted.
+
+- The buffer is written first if modified — mdpdf reads the file from disk, so
+  an unwritten buffer would silently export stale content.
+- Progress is streamed into a scratch split rather than `vim.notify`d: a cold
+  build is pandoc + a headless-Chromium mermaid render + two pdflatex passes and
+  can take a minute, and it can fail halfway. mdpdf prints one `==>` line per
+  phase for exactly this.
+- **The contract with mdpdf is its last two stdout lines**, `BUILD DIR:` and
+  `OUTPUT:`. The plugin parses them for the completion notification. Changing
+  either format in mdpdf breaks this plugin.
+- `:ConvertToPdf!` (bang) passes `--clean` — discard cached artifacts.
+- `:ConvertOpenBuildDir` opens the cache via `mdpdf --print-build-dir`.
+
+In markdown, `/comment <text>` is a line comment dropped from the export, and
+```` ```mermaid ```` blocks render as diagrams.
+
+## autosave
+
+`after/plugin/autosave.lua` writes modified buffers on `InsertLeave`,
+`TextChanged`, `FocusLost` and `BufLeave`.
+
+**The scope is deliberately narrow: only buffers already backed by a file that
+exists on disk.** A `[No Name]` buffer, a terminal, help, quickfix, a plugin
+scratch buffer and a readonly file are all skipped. Autosave must never be the
+thing that decides where a file lives — that is the user's `:w path` to make.
+
+The write is `pcall`ed: a `BufWritePre` autocmd that errors (a formatter that
+cannot parse half-typed code) must not raise a popup on every keystroke. The
+buffer simply stays modified and the next trigger retries.
+
+`:AutoSaveToggle` / `:AutoSaveStatus`.
 
 ## AI completion (Copilot)
 
