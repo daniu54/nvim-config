@@ -61,6 +61,10 @@ never deleted.
   `OUTPUT:`. The plugin parses them for the completion notification. Changing
   either format in mdpdf breaks this plugin.
 - `:ConvertToPdf!` (bang) passes `--clean` — discard cached artifacts.
+- An optional argument is the **style profile**: `:ConvertToPdf academic`.
+  `<Tab>` completes it from `mdpdf --list-styles`, so the list can never drift
+  from what the binary ships. Default is `word` — a Word-export look; `academic`
+  is the numbered-sections paper look.
 - `:ConvertOpenBuildDir` opens the cache via `mdpdf --print-build-dir`.
 
 In markdown, `/comment <text>` is a line comment dropped from the export, and

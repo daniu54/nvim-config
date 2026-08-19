@@ -63,6 +63,24 @@ local function append(lines)
   end
 end
 
+-- styles asks mdpdf which look profiles exist. Used for command completion, so
+-- the list can never drift from what the binary actually ships.
+local function styles()
+  local out = vim.fn.systemlist({ mdpdf_bin(), "--list-styles" })
+  if vim.v.shell_error ~= 0 then
+    return {}
+  end
+  local names = {}
+  for _, line in ipairs(out) do
+    -- Rows look like "* word" / "  academic"; the trailing legend line does not.
+    local name = line:match("^[%*%s]%s(%S+)$")
+    if name then
+      names[#names + 1] = name
+    end
+  end
+  return names
+end
+
 -- convert runs mdpdf for one output format.
 --   format: "pdf" | "tex" | "docx"
 --   extra:  additional argv entries (e.g. { "--clean" }) from a command bang/args
@@ -153,15 +171,30 @@ function M.convert(format, extra)
   end))
 end
 
--- Each command takes an optional bang. `:ConvertToPdf!` forces a cold build,
--- discarding the cached artifacts — the escape hatch for "the output looks
--- stale and I do not want to reason about why".
+-- Each command takes an optional style name and an optional bang.
+--
+--   :ConvertToPdf              the default look (word)
+--   :ConvertToPdf academic     the paper look
+--   :ConvertToPdf!             bang forces a cold build, discarding the cached
+--                              artifacts — the escape hatch for "the output
+--                              looks stale and I do not want to reason about why"
+--
+-- <Tab> completes the style name from `mdpdf --list-styles`.
 local function define(name, format)
   vim.api.nvim_create_user_command(name, function(opts)
-    M.convert(format, opts.bang and { "--clean" } or nil)
+    local extra = {}
+    if opts.bang then
+      table.insert(extra, "--clean")
+    end
+    if opts.args ~= "" then
+      vim.list_extend(extra, { "--style", opts.args })
+    end
+    M.convert(format, extra)
   end, {
     bang = true,
-    desc = "Convert the current markdown buffer to ." .. format .. " (bang = discard cached artifacts)",
+    nargs = "?",
+    complete = styles,
+    desc = "Convert the current markdown buffer to ." .. format .. " (arg = style, bang = cold build)",
   })
 end
 

@@ -134,6 +134,7 @@ local lines = {
   "   :ConvertToPdf     export buffer → .pdf beside the file     ",
   "   :ConvertToTex     export buffer → standalone .tex          ",
   "   :ConvertToWord    export buffer → .docx                    ",
+  "   :ConvertTo… <style>  word (default) | academic — <Tab> lists",
   "   :ConvertTo…!      bang = discard cached build artifacts    ",
   "   :ConvertOpenBuildDir  open the /tmp artifact dir           ",
   "   /comment <text>   line comment, dropped from the export    ",
