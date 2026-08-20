@@ -55,12 +55,15 @@ end
 
 -- save writes one buffer without disturbing the editing session: `silent`
 -- suppresses the "N lines written" message, `noautocmd` is NOT used because
--- formatters and LSP willSave handlers should still run, exactly as on a
--- manual :w.
+-- LSP willSave handlers should still run, exactly as on a manual :w.
+-- Formatting is the exception — see autosave_in_progress below.
 local function save(buf)
   if not should_save(buf) then
     return
   end
+  -- Autosave must not reformat the file — the user formats on their own
+  -- terms. conform.lua's format_on_save checks this flag and skips.
+  vim.b[buf].autosave_in_progress = true
   vim.api.nvim_buf_call(buf, function()
     -- pcall: a BufWritePre autocmd that errors (a formatter that cannot parse
     -- half-typed code, say) must not turn into an error popup on every
@@ -69,6 +72,7 @@ local function save(buf)
       vim.cmd("silent lockmarks write")
     end)
   end)
+  vim.b[buf].autosave_in_progress = false
 end
 
 local group = vim.api.nvim_create_augroup("AutoSave", { clear = true })
