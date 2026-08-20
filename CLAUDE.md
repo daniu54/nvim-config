@@ -83,6 +83,15 @@ Markdown authoring features mdpdf adds on top of pandoc:
   heading above it. `## Heading {.notoc}` keeps a section out of it (pdf/tex
   only — a Word TOC is built from heading styles).
 - ```` ```mermaid ```` fenced blocks render as diagrams.
+- **Code blocks** are syntax-highlighted, line-numbered (grey), and can carry a
+  heading and a jump id on the fence line:
+  ```` ```js #main src/main.js ````. File extensions work as language names
+  (`js`, `ts`, `sh`, `ps1`, `cs`, `yml`); pandoc itself knows none of them.
+  Windows paths in a heading survive verbatim. `[see it](#main)` jumps to the
+  block. `--highlight-style <name>`/`none` changes the colours,
+  `--no-line-numbers` (or `.nolinenumbers` on one block) drops the numbers.
+  Long lines wrap and long blocks split across pages. Line numbers are pdf/tex
+  only — Word cannot number per block.
 - **Cross-references** that jump in pdf/tex/docx. `[text](#my-section-title)`,
   `## Heading {#custom-id}`, or the section's name written out —
   `[text](#My Section Title)`. For a target that is not a heading, put
