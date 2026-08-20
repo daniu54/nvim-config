@@ -79,6 +79,10 @@ Markdown authoring features mdpdf adds on top of pandoc:
   sections under it are not renumbered. In `.docx` it becomes Word's own
   **Title** paragraph style, so it follows the document theme. Inline markdown
   in the title works.
+- `/newpage` (alias `/pagebreak`) starts a new page; `/newline` (alias
+  `/blankline`) inserts one blank line. `/newline` exists because a plain blank
+  line gets collapsed by formatters and ignored by pandoc — three `/newline`
+  lines really do give three lines.
 - `/tableofcontents` (alias `/toc`) — a table of contents right there, with no
   heading above it. `## Heading {.notoc}` keeps a section out of it (pdf/tex
   only — a Word TOC is built from heading styles).
@@ -86,7 +90,9 @@ Markdown authoring features mdpdf adds on top of pandoc:
 - **Code blocks** are syntax-highlighted, line-numbered (grey), and can carry a
   heading and a jump id on the fence line:
   ```` ```js #main src/main.js ````. File extensions work as language names
-  (`js`, `ts`, `sh`, `ps1`, `cs`, `yml`); pandoc itself knows none of them.
+  (`js`, `ts`, `sh`, `ps1`, `cs`, `yml`, `py`, `scss`, `htm`, plus `sql` and
+  `dockerfile`); pandoc knows none of the abbreviations. Default colour scheme
+  is `kate`.
   Windows paths in a heading survive verbatim. `[see it](#main)` jumps to the
   block. `--highlight-style <name>`/`none` changes the colours,
   `--no-line-numbers` (or `.nolinenumbers` on one block) drops the numbers.
