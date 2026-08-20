@@ -84,6 +84,57 @@ Markdown authoring features mdpdf adds on top of pandoc:
   `{#the-spot}` on a line of its own. Links work inside table cells. A link
   resolving to nothing is reported on stderr rather than silently dead.
 
+## markdown editing keymaps (ported from Obsidian)
+
+`after/plugin/markdown_edit.lua` ports the surround/list bindings from the
+Obsidian vimrc (`/mnt/d/obsidian_notes/default_vault/default/.obsidian.vimrc`)
+so the same muscle memory works here. Every mapping is normal mode (word under
+the cursor) *and* visual mode (the selection), and every one is a **toggle** —
+pressing it again on already-wrapped text strips the delimiters.
+
+| key | does | overrides |
+| --- | --- | --- |
+| `~` | `~~strikethrough~~` | builtin `~` toggle-case (`g~` unaffected) |
+| `` ` `` | `` `code` `` | builtin `` ` `` jump-to-mark prefix |
+| `"` | `"quoted"` | builtin `"` register prefix |
+| `'` | `'quoted'` | builtin `'` jump-to-mark prefix |
+| `<leader>q` | `"quoted"` | — (leader-side alias for `"`) |
+| `<leader>c` | `` `code` `` **in prose filetypes only** | Comment.nvim's visual line-comment toggle, in those buffers only |
+| `<leader>l` | `[text](url)` **in prose filetypes only**, cursor lands in the parens in insert mode | the `<leader>l…` prefix (`la` Copilot, `lr` Copilot Chat, `le` LspEnable), in those buffers only |
+| `gb` | toggle `- ` bullet list | Comment.nvim's blockwise-comment operator (`gb`/`gbc`); `<leader>C` still block comments |
+
+**These overrides were a deliberate choice, made with the costs stated** —
+matching the Obsidian keys exactly was worth more than the builtins they
+displace. Don't "fix" them into a `<leader>` namespace. Two consequences are
+load-bearing and easy to mistake for bugs:
+
+- **There is no jump-to-mark key left.** Both `` ` `` and `'` are taken. `m`
+  still sets marks and `:marks` still lists them; jumping needs `:normal!` or a
+  new binding.
+- **Typing a register prefix by hand no longer works** (`"ayy`, `"+p`). The
+  explicit maps cover the cases that matter: `<leader>Y`/`<leader>P` for the
+  system clipboard, `<leader>p`/`<leader>D` for the black hole.
+
+`<leader>c` and `<leader>l` are the two scoped exceptions: line-commenting is
+worth more in code than a code-inline wrap, and LSP/Copilot are not markdown
+concerns, so inside a prose buffer `<leader>la`/`<leader>lr`/`<leader>le` are
+simply unreachable — an accepted cost, not an oversight. Both are buffer-local,
+attached by a `FileType` autocmd matching `*` — not the prose list — so that a
+buffer whose filetype *changes away* from markdown gets the maps removed again;
+a buffer-local map set once would otherwise outlive the filetype that justified
+it.
+
+Implementation notes: the visual-mode path escapes out of visual mode first,
+because `'<`/`'>` are only published on leaving it; `'>` sits on the *first*
+byte of the last character, so it's extended with `vim.str_utf_end` to cover
+multibyte. Edits always apply the trailing delimiter before the leading one, so
+the start column stays valid. A mixed bullet selection normalises to
+all-bullets; only an all-bullet run is stripped.
+
+`<S-BS>` / `<C-BS>` are mapped to `<C-u>` alongside `<leader><BS>`, but most
+terminals (Windows Terminal included) send a plain `<BS>` for these, so they may
+never fire. `<leader><BS>` stays the reliable page-up.
+
 ## autosave
 
 `after/plugin/autosave.lua` writes modified buffers on `InsertLeave`,

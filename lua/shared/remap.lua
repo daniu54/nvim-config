@@ -18,6 +18,11 @@ vim.keymap.set("n", "<C-u>", "<C-u>zz")
 -- fast up down
 vim.keymap.set({"n", "v"}, "<BS>", "<C-d>")
 vim.keymap.set({"n", "v"}, "<leader><BS>", "<C-u>")
+-- <S-BS>/<C-BS> as page-up too: most terminals (Windows Terminal included) send
+-- a plain <BS> for these, in which case the maps are simply never reached and
+-- <leader><BS> remains the one that works. Harmless where unsupported.
+vim.keymap.set({"n", "v"}, "<S-BS>", "<C-u>")
+vim.keymap.set({"n", "v"}, "<C-BS>", "<C-u>")
 
 -- keep cursor in middle when searching
 vim.keymap.set("n", "n", "nzzzv")
