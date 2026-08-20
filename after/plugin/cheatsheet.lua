@@ -162,6 +162,8 @@ local lines = {
   "   /title <text>     document title, not a heading (optional) ",
   "   /tableofcontents  in-place contents list, no heading       ",
   "   /toc              short alias for /tableofcontents         ",
+  "   /newpage          start a new page (alias /pagebreak)      ",
+  "   /newline          one blank line (alias /blankline)        ",
   "   ## H {.notoc}     keep this section out of the contents    ",
   "   ```mermaid        fenced mermaid blocks render as diagrams ",
   "   ```js #id path.js  code: language, jump id, heading        ",
