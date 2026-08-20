@@ -67,8 +67,17 @@ never deleted.
   is the numbered-sections paper look.
 - `:ConvertOpenBuildDir` opens the cache via `mdpdf --print-build-dir`.
 
-In markdown, `/comment <text>` is a line comment dropped from the export, and
-```` ```mermaid ```` blocks render as diagrams.
+Markdown authoring features mdpdf adds on top of pandoc:
+
+- `/comment <text>` — a line comment, dropped from the export.
+- `/ignore` — drops that line and **everything below it**. For a file with a
+  finished document at the top and a scratchpad underneath.
+- ```` ```mermaid ```` fenced blocks render as diagrams.
+- **Cross-references** that jump in pdf/tex/docx. `[text](#my-section-title)`,
+  `## Heading {#custom-id}`, or the section's name written out —
+  `[text](#My Section Title)`. For a target that is not a heading, put
+  `{#the-spot}` on a line of its own. Links work inside table cells. A link
+  resolving to nothing is reported on stderr rather than silently dead.
 
 ## autosave
 
