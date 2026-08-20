@@ -72,6 +72,9 @@ Markdown authoring features mdpdf adds on top of pandoc:
 - `/comment <text>` — a line comment, dropped from the export.
 - `/ignore` — drops that line and **everything below it**. For a file with a
   finished document at the top and a scratchpad underneath.
+- `/tableofcontents` — a table of contents right there, with no heading above
+  it. `## Heading {.notoc}` keeps a section out of it (pdf/tex only — a Word
+  TOC is built from heading styles).
 - ```` ```mermaid ```` fenced blocks render as diagrams.
 - **Cross-references** that jump in pdf/tex/docx. `[text](#my-section-title)`,
   `## Heading {#custom-id}`, or the section's name written out —
