@@ -70,8 +70,10 @@ never deleted.
 Markdown authoring features mdpdf adds on top of pandoc:
 
 - `/comment <text>` — a line comment, dropped from the export.
-- `/ignore` — drops that line and **everything below it**. For a file with a
-  finished document at the top and a scratchpad underneath.
+- `/ignore` … `/endignore` — drops that region. **An `/ignore` with no
+  `/endignore` drops the rest of the file**, which is the intended reading for
+  a file with a finished document at the top and a scratchpad underneath, not
+  an error. A stray `/endignore` is removed and warned about.
 - `/tableofcontents` — a table of contents right there, with no heading above
   it. `## Heading {.notoc}` keeps a section out of it (pdf/tex only — a Word
   TOC is built from heading styles).
