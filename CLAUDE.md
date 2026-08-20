@@ -74,9 +74,14 @@ Markdown authoring features mdpdf adds on top of pandoc:
   `/endignore` drops the rest of the file**, which is the intended reading for
   a file with a finished document at the top and a scratchpad underneath, not
   an error. A stray `/endignore` is removed and warned about.
-- `/tableofcontents` — a table of contents right there, with no heading above
-  it. `## Heading {.notoc}` keeps a section out of it (pdf/tex only — a Word
-  TOC is built from heading styles).
+- `/title My Cool Document` — the document's title, on its own line, optional.
+  It is **not a heading**: no section number, no contents entry, and the
+  sections under it are not renumbered. In `.docx` it becomes Word's own
+  **Title** paragraph style, so it follows the document theme. Inline markdown
+  in the title works.
+- `/tableofcontents` (alias `/toc`) — a table of contents right there, with no
+  heading above it. `## Heading {.notoc}` keeps a section out of it (pdf/tex
+  only — a Word TOC is built from heading styles).
 - ```` ```mermaid ```` fenced blocks render as diagrams.
 - **Cross-references** that jump in pdf/tex/docx. `[text](#my-section-title)`,
   `## Heading {#custom-id}`, or the section's name written out —
