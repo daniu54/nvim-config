@@ -1,5 +1,18 @@
 local warn_win, warn_buf
 
+-- The bar is only meaningful for a buffer that mirrors one file on disk.
+-- netrw buffers are the case that matters: they have buftype "" (netrw sets
+-- only 'noma nomod nu nowrap ro'), and their "file" is a directory whose mtime
+-- changes on every write inside it — so :checktime raises FileChangedShell for
+-- a buffer where ":e! to reload" is not the right advice.
+local function is_disk_file(buf)
+  buf = buf or 0
+  if vim.bo[buf].buftype ~= "" then return false end
+  if vim.bo[buf].filetype == "netrw" then return false end
+  local name = vim.api.nvim_buf_get_name(buf)
+  return name ~= "" and vim.fn.isdirectory(name) == 0
+end
+
 local function show_bar()
   if warn_win and vim.api.nvim_win_is_valid(warn_win) then return end
   warn_buf = vim.api.nvim_create_buf(false, true)
@@ -38,8 +51,9 @@ local g = vim.api.nvim_create_augroup("FileChangedBar", { clear = true })
 -- also print its own W11/W12 message or silently reload with 'autoread'.
 vim.api.nvim_create_autocmd("FileChangedShell", {
   group = g,
-  callback = function()
+  callback = function(args)
     vim.v.fcs_choice = ""
+    if not is_disk_file(args.buf) then return end
     show_bar()
   end,
 })
@@ -55,7 +69,7 @@ vim.api.nvim_create_autocmd({ "BufReadPost", "BufWritePost" }, {
 vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold", "CursorHoldI" }, {
   group = g,
   callback = function()
-    if vim.bo.buftype == "" then
+    if is_disk_file() then
       vim.cmd("silent! checktime")
     end
   end,
