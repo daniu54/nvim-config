@@ -65,6 +65,29 @@ vim.api.nvim_create_autocmd("FileType", {
     -- <BS>: go up a directory (overrides the global half-page-scroll map)
     vim.keymap.set("n", "<BS>", "<Plug>NetrwBrowseUpDir", { buffer = true, desc = "netrw: up a directory" })
 
+    -- i: toggle between the two listing styles worth having, instead of
+    -- cycling all four. netrw's own `i` does (style + 1) % 4 over
+    -- thin(0) / long(1) / wide(2) / tree(3); thin and wide are just the tree
+    -- view without the tree, so this jumps straight between tree(3) — the
+    -- default from g:netrw_liststyle — and long(1), the plain directory
+    -- listing with ../ ./ and timestamps.
+    --
+    -- Done by presetting the window's style to one below the target and
+    -- letting netrw's own NetrwListStyle do the increment + redraw, which is
+    -- what actually rebuilds the listing (it also adds/drops `-l` on
+    -- g:netrw_list_cmd for remote listings). netrw#Call exists precisely so
+    -- user mappings can reach these script-local functions. Only w: is
+    -- touched, so g:netrw_liststyle stays 3 and new windows still open as a
+    -- tree.
+    vim.keymap.set("n", "i", function()
+      local TREE, LONG, MAXLIST = 3, 1, 4
+      local cur = vim.w.netrw_liststyle or vim.g.netrw_liststyle
+      local target = (cur == TREE) and LONG or TREE
+      vim.w.netrw_liststyle = (target - 1) % MAXLIST
+      local islocal = vim.fn["netrw#CheckIfRemote"]() == 1 and 0 or 1
+      vim.fn["netrw#Call"]("NetrwListStyle", islocal)
+    end, { buffer = true, desc = "netrw: toggle tree / long listing" })
+
     -- yp: copy full path of file under cursor to Windows clipboard
     vim.keymap.set("n", "yp", function()
       local path = netrw_cursor_path()

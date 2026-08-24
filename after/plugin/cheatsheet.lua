@@ -23,6 +23,7 @@ local lines = {
   "   <CR>             dir: descend  /  file: open in new tab    ",
   "   <BS>             go up a directory (overrides page-scroll) ",
   "   o                open file in current window               ",
+  "   i                toggle tree / long listing (timestamps)  ",
   "   T  (or <S-CR>)   open file in new tab + lcd to its dir     ",
   "   yp               copy file path to Windows clipboard       ",
   "   !                run shell cmd; % = file under cursor      ",
