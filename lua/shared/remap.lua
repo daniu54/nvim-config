@@ -53,6 +53,36 @@ local function netrw_cursor_path()
   return vim.fn.fnamemodify(dir .. "/" .. cfile, ":p")
 end
 
+-- How many single-child-directory hops sit below `path` before hitting
+-- something worth stopping at (a file, an empty dir, or a dir with 2+
+-- entries). Used to smart-dive through Kotlin/Java-style package nesting
+-- (src/test/kotlin/com/foo/bar/) the way GitHub visually collapses that
+-- chain into one clickable node.
+local function netrw_tree_chain_depth(path)
+  local n = 0
+  local p = (path:gsub("/+$", ""))
+  while true do
+    local entries = vim.fn.readdir(p)
+    if #entries ~= 1 then break end
+    local child = p .. "/" .. entries[1]
+    if vim.fn.isdirectory(child) == 0 then break end
+    p = child
+    n = n + 1
+  end
+  return n
+end
+
+-- Whether `path` is already expanded in the current window's tree listing.
+-- w:netrw_treedict is keyed by directory path with the trailing "/"/"@"
+-- stripped, but netrw itself checks both forms when reading it (see
+-- s:NetrwTreeListing), so mirror that here.
+local function netrw_dir_expanded(path)
+  local dict = vim.w.netrw_treedict
+  if not dict then return false end
+  local p = (path:gsub("/+$", ""))
+  return dict[p] ~= nil or dict[p .. "/"] ~= nil
+end
+
 -- netrw keymaps
 vim.api.nvim_create_autocmd("FileType", {
   pattern = "netrw",
@@ -119,14 +149,43 @@ vim.api.nvim_create_autocmd("FileType", {
 
     -- <CR>: open file (default netrw_browse_split=3 behavior: new tab).
     -- If the file is already open in some tab, just focus that tab instead
-    -- of opening a duplicate. Directories still descend in place as normal.
+    -- of opening a duplicate.
+    --
+    -- Directories smart-dive: expanding a directory that is the start of a
+    -- chain of single-child directories (Kotlin/Java package nesting) walks
+    -- the whole chain in one <CR>, landing expanded on the first directory
+    -- that actually has something to choose between -- like GitHub collapses
+    -- "test/kotlin/profilecreator" into one node. Collapsing back out stays
+    -- dumb on purpose: an already-expanded directory just toggles closed one
+    -- level, same as stock netrw, so backing out never skips levels.
     vim.keymap.set("n", "<CR>", function()
-      local tab_utils = require("shared.tab_utils")
+      local browsecheck = vim.api.nvim_replace_termcodes("<Plug>NetrwLocalBrowseCheck", true, false, true)
       local path = netrw_cursor_path()
-      if vim.fn.isdirectory(path) == 0 and tab_utils.focus_if_open(path) then return end
 
-      vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Plug>NetrwLocalBrowseCheck", true, false, true), "m", false)
-    end, { buffer = true, desc = "netrw: open file (focus existing tab if already open)" })
+      if vim.fn.isdirectory(path) == 1 then
+        local TREELIST = 3
+        local liststyle = vim.w.netrw_liststyle or vim.g.netrw_liststyle
+        if liststyle == TREELIST and not netrw_dir_expanded(path) then
+          -- Fed one step at a time with the "x" (execute now) flag: each
+          -- <Plug>NetrwLocalBrowseCheck must finish inserting its child
+          -- lines before the next "j" can land on the right one, and
+          -- queuing the whole sequence up front raced that redraw.
+          local depth = netrw_tree_chain_depth(path)
+          vim.api.nvim_feedkeys(browsecheck, "mx", false)
+          for _ = 1, depth do
+            vim.api.nvim_feedkeys("j", "mx", false)
+            vim.api.nvim_feedkeys(browsecheck, "mx", false)
+          end
+        else
+          vim.api.nvim_feedkeys(browsecheck, "m", false)
+        end
+        return
+      end
+
+      local tab_utils = require("shared.tab_utils")
+      if tab_utils.focus_if_open(path) then return end
+      vim.api.nvim_feedkeys(browsecheck, "m", false)
+    end, { buffer = true, desc = "netrw: open file (focus existing tab); smart-dive single-child dir chains" })
 
     -- \: open file in background tab (new tab, stay focused on netrw).
     -- If the file is already open in some tab, just focus that tab instead
