@@ -122,7 +122,7 @@ require("lazy").setup({
         build = ':TSUpdate',
         config = function()
             require('nvim-treesitter.configs').setup({
-                ensure_installed = { 'javascript', 'typescript', 'tsx', 'lua', 'markdown', 'markdown_inline', 'yaml', 'zig' },
+                ensure_installed = { 'javascript', 'typescript', 'tsx', 'lua', 'markdown', 'markdown_inline', 'yaml', 'zig', 'kotlin' },
                 highlight = { enable = true },
             })
         end,
