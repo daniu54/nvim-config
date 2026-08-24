@@ -4,6 +4,12 @@ vim.api.nvim_set_var('netrw_bufsettings', 'noma nomod nu nowrap ro')
 vim.g.netrw_liststyle = 3  -- tree view by default
 vim.g.netrw_browse_split = 3  -- <CR> on file opens in new tab; dirs still descend in place
 
+-- Closing a tab focuses the tab to the LEFT, not the right. Files open in
+-- their own tab here (netrw_browse_split=3), so closing one lands you back on
+-- what you were reading before it rather than skipping forward past it.
+-- Option-level, so :q, :tabclose and <C-t>x all behave the same.
+vim.o.tabclose = "left"
+
 vim.api.nvim_create_autocmd("TermOpen", {
   pattern = "*",
   callback = function()
