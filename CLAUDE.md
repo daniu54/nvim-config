@@ -216,6 +216,42 @@ The write is `pcall`ed: a `BufWritePre` autocmd that errors (a formatter that
 cannot parse half-typed code) must not raise a popup on every keystroke. The
 buffer simply stays modified and the next trigger retries.
 
+**Autosave never resolves a conflict.** If the file on disk is not the one the
+buffer was last in sync with, the write is refused, the buffer stays modified,
+and a notification names the two ways out: `:w!` to overwrite disk, `:e!` to
+discard the buffer and reload. Either one un-pauses autosave (`BufWritePost` /
+`BufReadPost` re-stamp the buffer as in sync). `:AutoSaveStatus` reports a
+standing pause.
+
+This is not guarding against a silent clobber — vim already refuses to
+overwrite a changed file. It is guarding against *how* it refuses: a blocking
+`Do you really want to write to it (y/n)?` dialog, which `silent` does not
+suppress, raised in the middle of typing. That prompt is right for a deliberate
+`:w` and wrong for a keystroke-driven one, so the gate answers "no" by never
+reaching the write.
+
+Two independent detectors, and both are needed:
+
+- **A latch on `FileChangedShell`** — vim's own detection, the same event that
+  raises the FILE CHANGED ON DISK bar (`lua/shared/file_changed_bar.lua`, which
+  owns `v:fcs_choice`), so the bar and the gate can never disagree. It **must**
+  be latched: vim re-stamps the buffer's mtime as it fires, so the event is
+  delivered exactly **once** per external change — polling it a second time
+  reports all-clear on a conflict that is still unresolved.
+- **A stamp of our own** — disk mtime to the nanosecond, plus size. Nanoseconds
+  because an external write landing in the same second as ours is exactly the
+  race worth catching. This one doesn't care when the last `:checktime` ran.
+
+**The same file open in several tabs is not a conflict and cannot be one.** Vim
+identifies buffers by (device, inode), not by path, so one file opened in ten
+tabs — absolute path, relative path, through a symlink, through a hard link —
+is one single buffer every time (verified). The tabs share one set of contents
+and cannot diverge. The check that *is* there covers the one case that does
+produce two buffers on one path: the file a buffer was opened from gets
+**replaced** (a `git checkout` swapping the inode) and the path is opened
+again. It costs a stat per open buffer on a per-keystroke event, so the answer
+is cached and recomputed only when the buffer list changes.
+
 `:AutoSaveToggle` / `:AutoSaveStatus`.
 
 ## AI completion (Copilot)
