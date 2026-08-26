@@ -31,6 +31,7 @@ lua/shared/
 after/plugin/
   autosave.lua              — autosave file-backed buffers (:AutoSaveToggle)
   markdown_convert.lua      — :ConvertToPdf/:ConvertToTex/:ConvertToWord via mdpdf
+  markdown_table.lua        — Obsidian-style table editing (<Tab>/<CR> grow the table)
   colors.lua                — colorscheme (rose-pine) + all custom highlight groups (Search, terminal visual, NetrwDotfile, etc.)
   conform.lua               — formatter config
   harpoon.lua               — harpoon2 config
@@ -103,6 +104,52 @@ Markdown authoring features mdpdf adds on top of pandoc:
   `[text](#My Section Title)`. For a target that is not a heading, put
   `{#the-spot}` on a line of its own. Links work inside table cells. A link
   resolving to nothing is reported on stderr rather than silently dead.
+
+## markdown tables (ported from Obsidian)
+
+`after/plugin/markdown_table.lua` ports the Obsidian tables plugin's three
+behaviours: typing `| name | age |` and pressing `<CR>` (or `<Tab>`) writes the
+`| --- | --- |` row and makes it a real table; `<Tab>` moves right and *creates*
+a column when there is none; `<CR>` moves to the next row, creating it, and on
+an empty last row drops out of the table instead — that is the way out. Plus
+`<A-h/l>` `<A-k/j>` insert a column/row, `<A-S-…>` move one, `<A-d>` deletes a
+column, `<A-a>` cycles alignment, `<A-t>` inserts a fresh table, `:TableFormat`
+reflows. Everything reflows on those keys and on `InsertLeave`.
+
+**It is written against the line text, not treesitter, and deliberately does
+not use table-nvim** (SCJangra/table-nvim — the one plugin that does this job).
+Both are ruled out by the same thing: *the markdown grammar has no production
+for a row of blank cells*, so a table whose last row is empty parses as an
+`ERROR` node with no table in it at all. Verified against both the parser
+pinned in `lazy-lock.json` and current tree-sitter-markdown, so it is not a
+version problem and will not be fixed by a bump. An empty row is exactly what
+"`<CR>` makes the next row" has to produce, so anything reading the tree breaks
+on its own output from the second row on — table-nvim sidesteps this by filling
+new cells with an `x` placeholder, which is the behaviour being avoided here.
+Reading the lines as text has no such hole, and it is also why a half-built
+table (a lone `| header |` line, invisible to the grammar) is editable.
+
+The cost is that markdown *highlighting* still goes flat over a table with an
+empty row — same parser — and comes back once the row has content.
+
+`<Tab>`, `<S-Tab>` and `<CR>` are nvim-cmp's keys and a buffer-local map
+shadows a global one, so each handler hands the key back to cmp when the
+completion menu is open, mirroring `after/plugin/cmp.lua` (including that
+`<CR>` confirms only an explicitly selected entry).
+
+**Because these three keys are contested, the attach conditions are narrower
+than "filetype is markdown", and both narrowings are load-bearing:**
+
+- A markdown *file being edited* — `buftype == ''` and `modifiable`. An LSP
+  hover float, a telescope preview and plugin scratch windows are all
+  `filetype=markdown` on a `nofile` buffer, and none of them wants `<Tab>` and
+  `<CR>` rewired.
+- Only maps this file actually set are removed again, tracked by the
+  `b:markdown_table_maps` flag. The autocmd matches `FileType *` (like
+  `markdown_edit.lua`, so a buffer whose filetype changes *away* from markdown
+  gets the keys back), but a blind `keymap.del` in that branch would delete
+  some *other* plugin's buffer-local `<Tab>`/`<CR>` — telescope's picker keys,
+  for one — in any buffer that sets its filetype after its mappings.
 
 ## markdown editing keymaps (ported from Obsidian)
 
