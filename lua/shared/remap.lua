@@ -15,14 +15,37 @@ vim.keymap.set("n", "J", "mzJ`z")
 vim.keymap.set("n", "<C-d>", "<C-d>zz")
 vim.keymap.set("n", "<C-u>", "<C-u>zz")
 
--- fast up down
-vim.keymap.set({"n", "v"}, "<BS>", "<C-d>")
-vim.keymap.set({"n", "v"}, "<leader><BS>", "<C-u>")
--- <S-BS>/<C-BS> as page-up too: most terminals (Windows Terminal included) send
--- a plain <BS> for these, in which case the maps are simply never reached and
--- <leader><BS> remains the one that works. Harmless where unsupported.
-vim.keymap.set({"n", "v"}, "<S-BS>", "<C-u>")
-vim.keymap.set({"n", "v"}, "<C-BS>", "<C-u>")
+-- <BS>: quit, saving first if the file was already written to disk. A
+-- buffer that has never been written (no name, or a name that doesn't yet
+-- exist on disk) is left alone and :quit blocks it the normal way ("E37: No
+-- write since last change") -- <BS> must never be the thing that decides
+-- where a file lives. And it never exits Neovim itself: closing the last
+-- window would do that, so that case opens netrw instead (see below) -- the
+-- point of this map is jumping back to whatever's behind the window (netrw,
+-- another split), not quitting the application.
+--
+-- Scoped to normal file buffers only (buftype == ""). Everything else keeps
+-- the old half-page-scroll behavior: terminal buffers, help, quickfix, etc.
+-- netrw additionally overrides <BS> with its own buffer-local "up a
+-- directory" map below, which wins over this one.
+vim.keymap.set({"n", "v"}, "<BS>", function()
+  if vim.bo.buftype ~= "" then
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<C-d>", true, false, true), "n", false)
+    return
+  end
+  local name = vim.api.nvim_buf_get_name(0)
+  if vim.bo.modified and name ~= "" and vim.fn.filereadable(name) == 1 then
+    vim.cmd("silent update")
+  end
+  -- Last window in the last tab: quitting it would exit Neovim, which <BS>
+  -- must never do. Open netrw on the current file's directory instead --
+  -- the same place quitting a split would have "returned" to.
+  if vim.fn.tabpagenr("$") == 1 and #vim.api.nvim_tabpage_list_wins(0) == 1 then
+    vim.cmd("Explore")
+    return
+  end
+  vim.cmd("quit")
+end, { desc = "Quit (save first if already written to disk); opens netrw if last window; <C-d> scroll in non-file buffers" })
 
 -- keep cursor in middle when searching
 vim.keymap.set("n", "n", "nzzzv")
@@ -92,7 +115,7 @@ vim.api.nvim_create_autocmd("FileType", {
     pcall(vim.keymap.del, "n", "<F1>", { buffer = true })
     vim.keymap.set("n", "g?", "<Cmd>he netrw-quickhelp<CR>", { buffer = true, desc = "netrw: quick help" })
 
-    -- <BS>: go up a directory (overrides the global half-page-scroll map)
+    -- <BS>: go up a directory (overrides the global quit/scroll map)
     vim.keymap.set("n", "<BS>", "<Plug>NetrwBrowseUpDir", { buffer = true, desc = "netrw: up a directory" })
 
     -- i: toggle between the two listing styles worth having, instead of
