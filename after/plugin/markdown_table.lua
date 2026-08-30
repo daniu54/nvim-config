@@ -342,12 +342,34 @@ local function feed(keys)
   api.nvim_feedkeys(api.nvim_replace_termcodes(keys, true, false, true), 'n', false)
 end
 
+-- <A-j>/<A-k> and <A-S-j>/<A-S-k> belong to multicursor everywhere else in
+-- this config (after/plugin/multicursor.lua): add / skip a cursor below or
+-- above. Inside a table they insert and move rows instead, and outside one
+-- they are handed straight back -- the same "give the key back when this file
+-- has nothing to do with it" arrangement the <Tab>/<CR> handlers have with
+-- nvim-cmp, so a markdown buffer is not the one place with no multiple
+-- cursors.
+--
+-- Handing back means *calling* multicursor, not feeding <A-j> again:
+-- feedkeys without remapping would find no mapping at all (nothing else binds
+-- these keys), and with remapping it would land straight back in this map.
+local function multicursor(fn, dir)
+  return function()
+    local ok, mc = pcall(require, 'multicursor-nvim')
+    if ok then mc[fn](dir) end
+  end
+end
+
 -- An operation on the table under the cursor: mutate the model, then say which
--- cell to land on. A no-op when the cursor is not in a table.
-local function op(fn)
+-- cell to land on. Outside a table it runs `fallback`, or does nothing when
+-- there is none.
+local function op(fn, fallback)
   return function()
     local t = parse()
-    if not t then return end
+    if not t then
+      if fallback then fallback() end
+      return
+    end
     ensure_delimiter(t)
     local row, col = fn(t)
     flush(t)
@@ -400,13 +422,13 @@ local table_maps = {
     local at = math.max(t.row + 1, t.delim + 1)
     table.insert(t.rows, at, blank_row(t))
     return at, 1
-  end), 'Table: insert row below' },
+  end, multicursor('lineAddCursor', 1)), 'Table: insert row below (outside a table: add a cursor below)' },
 
   { { 'n' }, '<A-k>', op(function(t)
     local at = math.max(t.row, t.delim + 1)
     table.insert(t.rows, at, blank_row(t))
     return at, 1
-  end), 'Table: insert row above' },
+  end, multicursor('lineAddCursor', -1)), 'Table: insert row above (outside a table: add a cursor above)' },
 
   { { 'n' }, '<A-d>', op(function(t)
     if t.ncols < 2 then return t.row, t.col end
@@ -434,13 +456,13 @@ local table_maps = {
     if t.row <= t.delim or t.row >= #t.rows then return t.row, t.col end
     t.rows[t.row], t.rows[t.row + 1] = t.rows[t.row + 1], t.rows[t.row]
     return t.row + 1, t.col
-  end), 'Table: move row down' },
+  end, multicursor('lineSkipCursor', 1)), 'Table: move row down (outside a table: skip a line downwards)' },
 
   { { 'n' }, '<A-S-k>', op(function(t)
     if t.row <= t.delim + 1 then return t.row, t.col end
     t.rows[t.row], t.rows[t.row - 1] = t.rows[t.row - 1], t.rows[t.row]
     return t.row - 1, t.col
-  end), 'Table: move row up' },
+  end, multicursor('lineSkipCursor', -1)), 'Table: move row up (outside a table: skip a line upwards)' },
 
   { { 'n' }, '<A-a>', op(function(t)
     local current = t.aligns[t.col] or 'none'
