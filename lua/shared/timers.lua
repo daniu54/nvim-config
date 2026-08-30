@@ -110,13 +110,15 @@ local function build_statusline()
     local timer_str = ""
 
     if #timers > 0 then
-        -- 30 chars reserved for " filename [+]  42:10 "
-        local available = vim.o.columns - 30
+        -- 36 chars reserved for " filename [+]  42:10 (99%) "
+        local available = vim.o.columns - 36
         local full = build_timer_parts(timers, true)
         timer_str = display_len(full) <= available and full or build_timer_parts(timers, false)
     end
 
-    return " %f %m%=" .. timer_str .. " %l:%c "
+    -- %p is the cursor line as a percentage of the file's line count, so the
+    -- ratio doubles as a sense of how long the file is.
+    return " %f %m%=" .. timer_str .. " %l:%c (%p%%) "
 end
 
 function M.setup()
