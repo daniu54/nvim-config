@@ -61,10 +61,14 @@ local GROUPS = {
     -- clickup-terminal's cmd/resolve.go
     { name = 'HlClickupId', pattern = [=[\<\%([0-9A-Za-z]*\d\)\@=\%([0-9A-Za-z]*[A-Za-z]\)\@=[0-9A-Za-z]\+\>]=], priority = 13 },
     -- error / warning / success keywords — above quotes/escapes so they still
-    -- stand out inside quoted log lines, but below the TODO-style markers
-    { name = 'HlNegative',        pattern = [=[\c\<\%(errors\?\|err\|fails\?\|failed\|failure\|exception\|fatal\|panic\|denied\|bugs\?\|blocked\|issues\?\|stopped\|stops\?\)\>]=], priority = 15 },
-    { name = 'HlLesserHighlight', pattern = [=[\c\<warn\%(ing\)\?s\?\>]=], priority = 15 },
-    { name = 'HlSuccess',         pattern = [=[\c\<\%(success\%(ful\%(ly\)\?\)\?\|succeeded\|pass\%(ed\)\?\|good\|ok\|done\|completed\|closed\|started\|starts\?\)\>]=], priority = 15 },
+    -- stand out inside quoted log lines, but below the TODO-style markers.
+    -- The negative tier sits one priority above the other two so that a
+    -- multi-word negative wins over a positive word inside it: `not found`
+    -- also matches `found`, and at equal priority the last-added match would
+    -- take the overlap and paint half the phrase green.
+    { name = 'HlNegative',        pattern = [=[\c\<\%(err\w*\|fail\%(s\|ed\|ing\|ure\%(s\)\?\)\?\|exception\%(s\)\?\|fatal\|panic\%(ked\)\?\|denied\|deny\|bugs\?\|block\%(s\|ed\|ing\)\?\|issues\?\|stopped\|stops\?\|reject\%(s\|ed\|ing\|ion\)\?\|refus\%(e\|es\|ed\|ing\|al\)\|abort\%(s\|ed\|ing\)\?\|cannot\|can't\|couldn't\|unable\|invalid\|missing\|not found\|no such\|unauthori[sz]ed\|forbidden\|timeout\|timed out\|crash\%(es\|ed\|ing\)\?\|corrupt\%(ed\|ion\)\?\|conflicts\?\|conflicting\|broken\|broke\|killed\|terminated\|unavailable\|unsupported\|unresolved\|undefined\|unexpected\|violat\%(es\|ed\|ion\%(s\)\?\)\|rollback\|rolled back\|revert\%(s\|ed\)\?\|discarded\|cancel\%(s\|ed\|led\|ling\)\?\|no\)\>]=], priority = 16 },
+    { name = 'HlLesserHighlight', pattern = [=[\c\<\%(warn\w*\|deprecated\|pending\|retry\%(ing\)\?\|retries\|skip\%(s\|ped\|ping\)\?\|ignor\%(e\|es\|ed\|ing\)\|remov\%(e\|es\|ed\|ing\)\|delet\%(e\|es\|ed\|ing\)\|unchanged\|cached\|stale\|outdated\|partial\%(ly\)\?\|experimental\|dirty\|untracked\|waiting\|queued\)\>]=], priority = 15 },
+    { name = 'HlSuccess',         pattern = [=[\c\<\%(success\w*\|succeed\%(s\|ed\)\?\|pass\%(ed\|es\)\?\|good\|ok\|okay\|done\|complet\%(e\|es\|ed\)\|closed\|start\%(s\|ed\)\?\|appl\%(y\|ies\|ied\)\|creat\%(e\|es\|ed\)\|add\%(s\|ed\)\?\|install\%(s\|ed\|ing\)\?\|updat\%(e\|es\|ed\)\|upgrad\%(e\|es\|ed\)\|sav\%(e\|es\|ed\)\|wrote\|written\|load\%(s\|ed\)\?\|connected\|enabled\|ready\|valid\|found\|merged\|pushed\|pulled\|committed\|cloned\|checked out\|resolved\|fixed\|synced\|available\|initiali[sz]ed\|verified\|accepted\|granted\|allowed\|approved\|finished\|built\|generated\|up to date\|active\|healthy\|running\|listening\|yes\)\>]=], priority = 15 },
     -- whole-line comments: gray, but lower priority than the groups above so
     -- quoted/parenthesised/slash content inside a comment still highlights
     { name = 'HlGrayComment',  pattern = [[^\s*\(#\|//\).*$]],          priority = 5 },
@@ -78,7 +82,7 @@ local GROUPS = {
     -- everything from the "#" to end of line grays out. Above priority 13
     -- (commands/quotes/paths/etc.) so those don't "shine through" a trailing
     -- comment the way they intentionally do for the whole-line comment rules
-    -- above — but still below the success/error/info tier (15) and TODO/
+    -- above — but still below the success/error/info tier (15/16) and TODO/
     -- FIXME/NOTE/BUG (20), so those still stand out even inside a comment.
     { name = 'HlGrayComment',  pattern = [=[#\s.*$]=],                    priority = 14 },
     -- TODO / FIXME / NOTE / BUG markers — matched anywhere, even mid-word
