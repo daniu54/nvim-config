@@ -106,6 +106,7 @@ local lines = {
   " ─────────────────────────────────────────────────────────── ",
   "  TERMINAL / TABS                                             ",
   "   <C-t>t           open terminal in vertical split (side)    ",
+  "   <C-t>T           new Windows Terminal window (detached)    ",
   "   <C-t>n           new empty tab                             ",
   "   <C-t>x           close current tab                         ",
   "   <C-t>s           hsplit: orig buf bottom, prev-tab top     ",

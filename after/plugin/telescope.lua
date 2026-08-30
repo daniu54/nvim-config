@@ -243,6 +243,22 @@ end
 -- <C-t>t: open terminal in vertical split to the side
 vim.keymap.set('n', '<C-t>t', open_term_side, { desc = 'Open terminal in vertical split at context dir' })
 
+-- <C-t>T: open a new *detached* Windows Terminal window at the context directory.
+-- The window-manager sibling of <C-t>t (which splits inside this nvim); it is the
+-- `tw` zsh alias (`wt.exe -d "$(wslpath -w .)"`) inlined, since a non-interactive
+-- shell would not see that alias.
+local function open_term_window()
+  local dir = ctx_cwd()
+  local win_dir = vim.fn.system({ 'wslpath', '-w', dir }):gsub('%s+$', '')
+  if vim.v.shell_error ~= 0 or win_dir == '' then
+    vim.notify('wslpath failed for: ' .. dir, vim.log.levels.ERROR)
+    return
+  end
+  -- detach: the window must outlive this nvim, and nvim must not wait on it
+  vim.fn.jobstart({ 'wt.exe', '-d', win_dir }, { detach = true })
+end
+vim.keymap.set('n', '<C-t>T', open_term_window, { desc = 'Open new Windows Terminal window at context dir' })
+
 -- <C-t>n: new empty tab
 vim.keymap.set('n', '<C-t>n', function() vim.cmd('tabnew') end, { desc = 'New tab' })
 
