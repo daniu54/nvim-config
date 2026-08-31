@@ -210,103 +210,44 @@ vim.keymap.set('n', '<leader>fb', builtin.buffers, { desc = 'Telescope: buffers'
 
 local tmux_session_seq = 0
 
--- Scroll / select the tmux pane's history from nvim normal mode.
+-- Scroll the tmux pane's history from nvim normal mode.
 --
--- With tmux driving the alternate screen, the nvim :terminal buffer only holds
--- the current screenful — there is no scrollback to move through after <C-e>.
--- Instead we drive tmux's own copy-mode:
---   * j/k at the top/bottom screen edge (and <C-d>/<C-u>, <C-f>/<C-b>, the
---     wheel) enter copy-mode and scroll; nvim re-renders what tmux shows.
---   * v / V start a tmux selection and enter a small "selecting" sub-mode
---     (b:tmux_selecting) where the movement keys extend the selection — tmux
---     scrolls by itself when the cursor leaves the screen, so a selection can
---     span the whole history. y or <CR> copies it (also to the Windows
---     clipboard via clip.exe); <Esc> / q cancels.
--- Re-entering terminal mode cancels copy-mode and drops back to the prompt.
-
-local function tmux_x(session, x_cmd, n)
-  local a = { 'tmux', 'send-keys', '-X', '-t', session }
-  if n then a[#a + 1] = '-N'; a[#a + 1] = tostring(n) end
-  a[#a + 1] = x_cmd
-  vim.fn.system(a)
-end
-
--- movement keys active only while a tmux selection is in progress
-local TMUX_SEL_LAYER = {
-  h = 'cursor-left', l = 'cursor-right',
-  w = 'next-word', b = 'previous-word', e = 'next-word-end',
-  ['0'] = 'start-of-line', ['^'] = 'back-to-indentation', ['$'] = 'end-of-line',
-  ['gg'] = 'history-top', G = 'history-bottom',
-  ['{'] = 'previous-paragraph', ['}'] = 'next-paragraph',
-  H = 'top-line', M = 'middle-line', L = 'bottom-line',
-}
-local TMUX_SEL_FINISH = { 'y', '<CR>', '<Esc>', 'q' }
-
-local function clear_tmux_selection(buf)
-  if not vim.api.nvim_buf_is_valid(buf) then return end
-  vim.b[buf].tmux_selecting = nil
-  for lhs in pairs(TMUX_SEL_LAYER) do pcall(vim.keymap.del, 'n', lhs, { buffer = buf }) end
-  for _, lhs in ipairs(TMUX_SEL_FINISH) do pcall(vim.keymap.del, 'n', lhs, { buffer = buf }) end
+-- With tmux driving the alternate screen, the nvim :terminal buffer only ever
+-- holds the current screenful — there is no scrollback to move through after
+-- <C-e> like there used to be. Instead, drive tmux's own copy-mode: `j`/`k` at
+-- the top/bottom screen edge (and <C-d>/<C-u>, the wheel) enter copy-mode and
+-- scroll; nvim re-renders whatever tmux then shows, so you can still visually
+-- select and yank the scrolled-in text into a register. Re-entering terminal
+-- mode cancels copy-mode and drops back to the live prompt.
+local function tmux_scroll(session, x_cmd, n)
+  vim.fn.system({
+    'tmux', 'copy-mode', '-t', session, ';',
+    'send-keys', '-X', '-t', session, '-N', tostring(n or 3), x_cmd,
+  })
 end
 
 local function attach_tmux_scroll_maps(buf)
   local o = { buffer = buf, silent = true }
-  local function s() return vim.b.tmux_session end
-  local function selecting() return vim.b.tmux_selecting end
   local function at_top() return vim.fn.line('w0') == 1 and vim.fn.winline() == 1 end
   local function at_bot()
     return vim.fn.line('w$') == vim.fn.line('$') and vim.fn.winline() == vim.fn.winheight(0)
   end
-  -- enter copy-mode (no-op if already in it), then run an -X command
-  local function cm(x_cmd, n)
-    if not s() then return end
-    vim.fn.system({ 'tmux', 'copy-mode', '-t', s(), ';',
-      'send-keys', '-X', '-t', s(), '-N', tostring(n or 1), x_cmd })
+  local function scroll(x_cmd, n)
+    local s = vim.b.tmux_session
+    if s then tmux_scroll(s, x_cmd, n) end
   end
-
   vim.keymap.set('n', 'k', function()
-    if selecting() then tmux_x(s(), 'cursor-up', vim.v.count1)
-    elseif at_top() then cm('scroll-up', 3 * vim.v.count1)
-    else vim.cmd('normal! ' .. vim.v.count1 .. 'k') end
+    if at_top() then scroll('scroll-up', 3) else vim.cmd('normal! k') end
   end, o)
   vim.keymap.set('n', 'j', function()
-    if selecting() then tmux_x(s(), 'cursor-down', vim.v.count1)
-    elseif at_bot() then cm('scroll-down', 3 * vim.v.count1)
-    else vim.cmd('normal! ' .. vim.v.count1 .. 'j') end
+    if at_bot() then scroll('scroll-down', 3) else vim.cmd('normal! j') end
   end, o)
-  vim.keymap.set('n', '<C-u>', function() cm('halfpage-up') end, o)
-  vim.keymap.set('n', '<C-d>', function() cm('halfpage-down') end, o)
-  vim.keymap.set('n', '<C-b>', function() cm('page-up') end, o)
-  vim.keymap.set('n', '<C-f>', function() cm('page-down') end, o)
-  vim.keymap.set('n', '<ScrollWheelUp>',   function() cm('scroll-up', 3) end, o)
-  vim.keymap.set('n', '<ScrollWheelDown>', function() cm('scroll-down', 3) end, o)
-
-  local function begin_select(line_wise)
-    if not s() then return end
-    vim.fn.system({ 'tmux', 'copy-mode', '-t', s() })
-    tmux_x(s(), line_wise and 'select-line' or 'begin-selection')
-    vim.b.tmux_selecting = true
-    for lhs, x in pairs(TMUX_SEL_LAYER) do
-      vim.keymap.set('n', lhs, function() tmux_x(s(), x, vim.v.count1) end, o)
-    end
-    local function finish(copy)
-      if s() then
-        if copy then
-          -- pipe the selection to the Windows clipboard, then cancel copy-mode
-          vim.fn.system({ 'tmux', 'send-keys', '-X', '-t', s(), 'copy-pipe-and-cancel', 'clip.exe' })
-        else
-          tmux_x(s(), 'cancel')
-        end
-      end
-      clear_tmux_selection(buf)
-    end
-    vim.keymap.set('n', 'y',     function() finish(true) end, o)
-    vim.keymap.set('n', '<CR>',  function() finish(true) end, o)
-    vim.keymap.set('n', '<Esc>', function() finish(false) end, o)
-    vim.keymap.set('n', 'q',     function() finish(false) end, o)
-  end
-  vim.keymap.set('n', 'v', function() begin_select(false) end, o)
-  vim.keymap.set('n', 'V', function() begin_select(true) end, o)
+  vim.keymap.set('n', '<C-u>', function() scroll('halfpage-up') end, o)
+  vim.keymap.set('n', '<C-d>', function() scroll('halfpage-down') end, o)
+  vim.keymap.set('n', '<C-b>', function() scroll('page-up') end, o)
+  vim.keymap.set('n', '<C-f>', function() scroll('page-down') end, o)
+  vim.keymap.set('n', '<ScrollWheelUp>',   function() scroll('scroll-up', 3) end, o)
+  vim.keymap.set('n', '<ScrollWheelDown>', function() scroll('scroll-down', 3) end, o)
 end
 
 -- Re-entering terminal mode in a tmux terminal → cancel copy-mode so the pane
@@ -316,9 +257,7 @@ vim.api.nvim_create_autocmd('ModeChanged', {
   pattern = '*:t',
   callback = function()
     local s = vim.b.tmux_session
-    if not s then return end
-    vim.fn.system({ 'tmux', 'send-keys', '-X', '-t', s, 'cancel' })
-    clear_tmux_selection(vim.api.nvim_get_current_buf())
+    if s then vim.fn.system({ 'tmux', 'send-keys', '-X', '-t', s, 'cancel' }) end
   end,
 })
 
