@@ -87,16 +87,10 @@ local function on_attach(_, bufnr)
     map(']d', function() vim.diagnostic.jump({ count = 1 }) end,  'LSP: next diagnostic')
     map('[d', function() vim.diagnostic.jump({ count = -1 }) end, 'LSP: prev diagnostic')
 
-    -- K: show diagnostic popup if there's a warning/error on this line, otherwise hover docs
-    map('K', function()
-        local lnum = vim.fn.line('.') - 1  -- 0-indexed
-        local diags = vim.diagnostic.get(vim.api.nvim_get_current_buf(), { lnum = lnum })
-        if #diags > 0 then
-            vim.diagnostic.open_float()
-        else
-            hover()
-        end
-    end, 'LSP: diagnostic popup or hover docs')
+    -- No K map here: K is page-up globally (lua/shared/remap.lua), and a
+    -- buffer-local one would silently shadow it in every LSP-attached buffer.
+    -- The two things it used to do are already bound: gi hovers, ge expands
+    -- the diagnostic under the cursor.
 
     -- <leader>K: all diagnostics in location list
     map('<leader>K', vim.diagnostic.setloclist, 'LSP: all diagnostics list')

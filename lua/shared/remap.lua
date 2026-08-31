@@ -8,8 +8,17 @@ vim.keymap.set("n", "<leader>pv", function() vim.cmd("Texplore") end)
 vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv")
 vim.keymap.set("v", "K", ":m '<-2<CR>gv=gv")
 
--- j appends line to previous, this makes the cursor stay in place
-vim.keymap.set("n", "J", "mzJ`z")
+-- J / K page down / up -- plain aliases for <PageDown> / <PageUp>, so they
+-- behave exactly like the builtin keys (count included). The join-lines maps
+-- they displace moved to <leader>j / <leader>k below. Visual-mode J/K still
+-- move the selection (above).
+vim.keymap.set("n", "J", "<PageDown>", { desc = "Page down (alias for <PageDown>)" })
+vim.keymap.set("n", "K", "<PageUp>", { desc = "Page up (alias for <PageUp>)" })
+
+-- join lines, cursor stays in place: <leader>j pulls the line below up onto
+-- this one (builtin J), <leader>k pulls this line up onto the one above.
+vim.keymap.set("n", "<leader>j", "mzJ`z", { desc = "Join line below (cursor stays)" })
+vim.keymap.set("n", "<leader>k", "kmzJ`z", { desc = "Join onto line above (cursor stays)" })
 
 -- keep cursor in middle when jumping
 vim.keymap.set("n", "<C-d>", "<C-d>zz")
