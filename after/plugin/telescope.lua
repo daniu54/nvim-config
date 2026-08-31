@@ -490,6 +490,11 @@ vim.keymap.set('t', '<C-n>', term_send('\x02c'), { desc = 'tmux: new window' })
 vim.keymap.set('t', '<C-h>', term_send('\x08'),  { desc = 'tmux: previous window' })
 vim.keymap.set('t', '<C-l>', term_send('\x0c'),  { desc = 'tmux: next window' })
 vim.keymap.set('t', '<C-q>', term_send('\x11'),  { desc = 'tmux: close pane' })
+-- <C-]>/<C-\>: move the current tmux window one index left/right (prefix + </>).
+-- Ctrl+[ is not available: it *is* Escape (0x1b), so mapping it here would
+-- swallow <Esc> for tmux copy-mode and every program inside the pane.
+vim.keymap.set('t', '<C-\\>', term_send('\x02<'), { desc = 'tmux: move window left' })
+vim.keymap.set('t', '<C-]>',  term_send('\x02>'), { desc = 'tmux: move window right' })
 -- <A-h/j/k/l>: move between tmux panes (prefix + h/j/k/l → select-pane)
 vim.keymap.set('t', '<A-h>', term_send('\x02h'), { desc = 'tmux: select pane left' })
 vim.keymap.set('t', '<A-j>', term_send('\x02j'), { desc = 'tmux: select pane down' })

@@ -138,6 +138,7 @@ local lines = {
   "   <C-s>            tmux: split pane (side by side)           ",
   "   <C-n>            tmux: new window                          ",
   "   <C-h> / <C-l>    tmux: previous / next window (see bar)    ",
+  "   <C-\\> / <C-]>   tmux: move window left / right (wraps)    ",
   "   <A-h/j/k/l>      tmux: move between panes                  ",
   "   <C-q>            tmux: close pane                          ",
   "   <C-t>            fork: new WT window at this pane's cwd     ",
