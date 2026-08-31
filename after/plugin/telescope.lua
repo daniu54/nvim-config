@@ -248,16 +248,18 @@ local function attach_tmux_scroll_maps(buf)
   vim.keymap.set('n', '<C-f>', function() scroll('page-down') end, o)
   vim.keymap.set('n', '<ScrollWheelUp>',   function() scroll('scroll-up', 3) end, o)
   vim.keymap.set('n', '<ScrollWheelDown>', function() scroll('scroll-down', 3) end, o)
-  -- back into terminal mode → unfreeze the pane
-  vim.api.nvim_create_autocmd('ModeChanged', {
-    buffer = buf,
-    pattern = '*:t',
-    callback = function()
-      local s = vim.b.tmux_session
-      if s then vim.fn.system({ 'tmux', 'send-keys', '-X', '-t', s, 'cancel' }) end
-    end,
-  })
 end
+
+-- Re-entering terminal mode in a tmux terminal → cancel copy-mode so the pane
+-- snaps back to the live prompt. ModeChanged does not accept `buffer`, so this
+-- is one global autocmd guarded on b:tmux_session.
+vim.api.nvim_create_autocmd('ModeChanged', {
+  pattern = '*:t',
+  callback = function()
+    local s = vim.b.tmux_session
+    if s then vim.fn.system({ 'tmux', 'send-keys', '-X', '-t', s, 'cancel' }) end
+  end,
+})
 
 -- Open a :terminal in the current window running a fresh tmux session, lcd'd to
 -- `dir`. Records the session name in b:tmux_session for terminal-mode <C-t>.
