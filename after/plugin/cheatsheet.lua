@@ -137,7 +137,7 @@ local lines = {
   "  in a terminal (forwarded to tmux; prefix is C-b):           ",
   "   <C-s>            tmux: split pane (side by side)           ",
   "   <C-n>            tmux: new window                          ",
-  "   <C-t>            tmux: re-open this session in a new WT win ",
+  "   <C-t>            fork: new WT window at this pane's cwd     ",
   "   <C-p>            yank-history picker -> paste into shell   ",
   "   <C-e>            exit terminal mode (back to outer nvim)   ",
   "   C-b n / C-b p    tmux: next / prev window   C-b w  list    ",

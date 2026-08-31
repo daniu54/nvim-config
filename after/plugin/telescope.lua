@@ -93,6 +93,14 @@ local function ctx_cwd()
     return vim.b.netrw_curdir
   end
   if vim.bo.buftype == 'terminal' then
+    -- a tmux terminal: terminal_job_pid is the tmux client, whose cwd is frozen
+    -- at launch — ask tmux for the active pane's live directory instead
+    if vim.b.tmux_session then
+      local p = vim.fn.system(
+        { 'tmux', 'display-message', '-p', '-t', vim.b.tmux_session, '#{pane_current_path}' }
+      ):gsub('%s+$', '')
+      if vim.v.shell_error == 0 and p ~= '' then return p end
+    end
     local pid = vim.b.terminal_job_pid
     if pid then
       local cwd = vim.fn.resolve('/proc/' .. pid .. '/cwd')
@@ -226,29 +234,6 @@ local function open_term_side()
   local dir = ctx_cwd()
   vim.cmd('vsplit')
   open_tmux_terminal(dir)
-end
-
--- terminal-mode <C-t>: re-open *this* terminal's tmux session in a new Windows
--- Terminal window (detaching this one). Continue there, close this window — the
--- session lives in the shared tmux server, not in either WT window.
-local function reattach_in_new_window()
-  local session = vim.b.tmux_session
-  if not session then
-    vim.notify('<C-t>: this terminal is not running a tmux session', vim.log.levels.WARN)
-    return
-  end
-  -- tmux knows the pane's live cwd; ctx_cwd() only sees tmux's start dir
-  local dir = vim.fn.system(
-    { 'tmux', 'display-message', '-p', '-t', session, '#{pane_current_path}' }
-  ):gsub('%s+$', '')
-  if vim.v.shell_error ~= 0 or dir == '' then dir = ctx_cwd() end
-  local win_dir = vim.fn.system({ 'wslpath', '-w', dir }):gsub('%s+$', '')
-  local cmd = { 'wt.exe' }
-  if vim.v.shell_error == 0 and win_dir ~= '' then
-    vim.list_extend(cmd, { '-d', win_dir })
-  end
-  vim.list_extend(cmd, { 'wsl.exe', '--', 'tmux', 'new-session', '-A', '-D', '-s', session })
-  vim.fn.jobstart(cmd, { detach = true })
 end
 
 -- <C-t>T: open terminal in vertical split to the side
@@ -404,8 +389,11 @@ vim.keymap.set('t', '<C-n>', function()
   vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x02c')  -- prefix + c  → new window
 end, { desc = 'tmux: new window' })
 
--- terminal-mode <C-t>: re-open this tmux session in a new Windows Terminal window
-vim.keymap.set('t', '<C-t>', reattach_in_new_window, { desc = 'tmux: re-open this session in a new WT window' })
+-- terminal-mode <C-t>: "fork" — open a new Windows Terminal window at this
+-- pane's live cwd. It boots the full stack fresh (zsh → nvim → :terminal →
+-- tmux → zsh, via the zshrc auto-launch), an independent session. This window
+-- is left completely untouched. Same action as normal-mode <C-t>t.
+vim.keymap.set('t', '<C-t>', open_term_window, { desc = 'Fork: new WT window at this pane cwd' })
 
 -- <C-o>: forward to terminal — lets shell/fzf/etc. receive it.
 vim.keymap.set('t', '<C-o>', function()
