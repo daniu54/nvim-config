@@ -380,14 +380,22 @@ end
 
 vim.keymap.set('n', '<C-s>', open_term_split, { desc = 'Open terminal in hsplit below at context dir' })
 
--- terminal-mode <C-s> / <C-n>: forward the tmux prefix (C-b = 0x02) plus a key,
--- so tmux splits / new windows without the two-key chord.
-vim.keymap.set('t', '<C-s>', function()
-  vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x02%')  -- prefix + %  → split pane, side by side
-end, { desc = 'tmux: split pane (side by side)' })
-vim.keymap.set('t', '<C-n>', function()
-  vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x02c')  -- prefix + c  → new window
-end, { desc = 'tmux: new window' })
+-- terminal-mode tmux control keys. <C-s>/<C-n> forward the tmux prefix
+-- (C-b = 0x02) plus a key; <C-h>/<C-l>/<C-q> forward the raw ctrl char, which
+-- ~/.tmux.conf catches as root-table (prefix-free) bindings.
+local function term_send(byte)
+  return function() vim.api.nvim_chan_send(vim.b.terminal_job_id, byte) end
+end
+vim.keymap.set('t', '<C-s>', term_send('\x02%'), { desc = 'tmux: split pane (side by side)' })
+vim.keymap.set('t', '<C-n>', term_send('\x02c'), { desc = 'tmux: new window' })
+vim.keymap.set('t', '<C-h>', term_send('\x08'),  { desc = 'tmux: previous window' })
+vim.keymap.set('t', '<C-l>', term_send('\x0c'),  { desc = 'tmux: next window' })
+vim.keymap.set('t', '<C-q>', term_send('\x11'),  { desc = 'tmux: close pane' })
+-- <A-h/j/k/l>: move between tmux panes (prefix + h/j/k/l → select-pane)
+vim.keymap.set('t', '<A-h>', term_send('\x02h'), { desc = 'tmux: select pane left' })
+vim.keymap.set('t', '<A-j>', term_send('\x02j'), { desc = 'tmux: select pane down' })
+vim.keymap.set('t', '<A-k>', term_send('\x02k'), { desc = 'tmux: select pane up' })
+vim.keymap.set('t', '<A-l>', term_send('\x02l'), { desc = 'tmux: select pane right' })
 
 -- terminal-mode <C-t>: "fork" — open a new Windows Terminal window at this
 -- pane's live cwd. It boots the full stack fresh (zsh → nvim → :terminal →
