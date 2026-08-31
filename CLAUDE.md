@@ -32,7 +32,6 @@ after/plugin/
   autosave.lua              — autosave file-backed buffers (:AutoSaveToggle)
   markdown_convert.lua      — :ConvertToPdf/:ConvertToTex/:ConvertToWord via mdpdf
   markdown_table.lua        — Obsidian-style table editing (<Tab>/<CR> grow the table)
-  multicursor.lua           — multiple cursors (<A-j>/<A-k>), multicursor.nvim
   colors.lua                — colorscheme (rose-pine) + all custom highlight groups (Search, terminal visual, NetrwDotfile, etc.)
   conform.lua               — formatter config
   harpoon.lua               — harpoon2 config
@@ -115,8 +114,7 @@ a column when there is none; `<CR>` moves to the next row, creating it, and on
 an empty last row drops out of the table instead — that is the way out. Plus
 `<A-h/l>` `<A-k/j>` insert a column/row, `<A-S-…>` move one, `<A-d>` deletes a
 column, `<A-a>` cycles alignment, `<A-t>` inserts a fresh table, `:TableFormat`
-reflows. The four row keys are shared with multiple cursors — see "multiple
-cursors" below. Everything reflows on those keys and on `InsertLeave`.
+reflows. Everything reflows on those keys and on `InsertLeave`.
 
 **It is written against the line text, not treesitter, and deliberately does
 not use table-nvim** (SCJangra/table-nvim — the one plugin that does this job).
@@ -203,53 +201,6 @@ all-bullets; only an all-bullet run is stripped.
 `<S-BS>` / `<C-BS>` are mapped to `<C-u>` alongside `<leader><BS>`, but most
 terminals (Windows Terminal included) send a plain `<BS>` for these, so they may
 never fire. `<leader><BS>` stays the reliable page-up.
-
-## multiple cursors
-
-`after/plugin/multicursor.lua` (multicursor.nvim, pinned in `lazy-lock.json`).
-`<A-j>` / `<A-k>` drop another cursor on the line below / above; then use vim
-exactly as with one cursor — `i`, `a`, `ciw`, `dd`, `.`, counts, motions,
-registers, undo and completion all run at every cursor — and `<Esc>` collapses
-back to one. Text typed in insert mode appears at the other cursors **when you
-leave insert mode**, not keystroke by keystroke; that is the plugin's design,
-not a bug.
-
-| key | does |
-| --- | --- |
-| `<A-j>` / `<A-k>` | add a cursor below / above |
-| `<A-S-j>` / `<A-S-k>` | skip a line — move on without leaving a cursor |
-| `<A-n>` / `<A-N>` | cursor on the next / previous match of the word under the cursor (or the visual selection) — VS Code's `Ctrl+D` |
-| `<A-s>` / `<A-S>` | skip that match instead of taking it |
-| `<A-m>` | a cursor on every match in the buffer |
-| `<A-q>` | freeze the extra cursors (only the main one moves) / unfreeze |
-| `<A-g>` | restore the cursors just cleared |
-| `<C-LeftMouse>` (+drag) | add/remove a cursor by clicking |
-| `<A-,>` / `<A-.>` | make the previous / next cursor the main one — *only while cursors exist* |
-| `<A-x>` | delete the main cursor — *only while cursors exist* |
-| `<Esc>` | unfreeze if frozen, else collapse to one cursor — *only while cursors exist* |
-
-The last three live in a **keymap layer**: the plugin maps them only while
-cursors exist, which is what lets `<Esc>` stay `<Esc>` the rest of the time.
-
-**Not vim-visual-multi**, the older and better-known plugin: it runs its own
-modal layer with its own meaning for most keys, and "a multi-cursor is just a
-cursor" was the point here.
-
-**The one collision is with the markdown table keys**, which own `<A-j>`,
-`<A-k>`, `<A-S-j>` and `<A-S-k>` in markdown buffers. Rather than move either
-set, `op()` in `after/plugin/markdown_table.lua` **falls through**: with the
-cursor inside a table those keys insert and move rows, and anywhere else in the
-file they add and skip cursors — the same arrangement the `<Tab>`/`<CR>`
-handlers have with nvim-cmp. Falling through means *calling* multicursor
-directly, never feeding `<A-j>` again: without remapping that finds no mapping
-at all, and with remapping it lands straight back in the table map. The
-remaining cost is that inside a table there is no way to add a cursor.
-
-`mc.setup()` would also claim normal-mode `<C-i>` / `<C-o>` for a cursor-aware
-jumplist, but only when *both* are unmapped, and here neither is: `<C-i>` comes
-from nvim's own defaults and `<C-o>` is telescope's find-files. So the jumplist
-keys are untouched (verified with `mapcheck`) — worth knowing if `<C-o>` is ever
-freed up, since multicursor would then take both.
 
 ## autosave
 

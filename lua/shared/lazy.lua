@@ -99,13 +99,6 @@ require("lazy").setup({
         end,
     },
 
-    -- multiple cursors (<A-j>/<A-k> add a cursor below/above), see
-    -- after/plugin/multicursor.lua
-    {
-        'jake-stewart/multicursor.nvim',
-        branch = '1.0',
-    },
-
     -- comments
     {
         'numToStr/Comment.nvim',
