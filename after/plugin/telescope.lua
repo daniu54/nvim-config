@@ -210,6 +210,55 @@ vim.keymap.set('n', '<leader>fb', builtin.buffers, { desc = 'Telescope: buffers'
 
 local tmux_session_seq = 0
 
+-- Scroll the tmux pane's history from nvim normal mode.
+--
+-- With tmux driving the alternate screen, the nvim :terminal buffer only ever
+-- holds the current screenful — there is no scrollback to move through after
+-- <C-e> like there used to be. Instead, drive tmux's own copy-mode: `j`/`k` at
+-- the top/bottom screen edge (and <C-d>/<C-u>, the wheel) enter copy-mode and
+-- scroll; nvim re-renders whatever tmux then shows, so you can still visually
+-- select and yank the scrolled-in text into a register. Re-entering terminal
+-- mode cancels copy-mode and drops back to the live prompt.
+local function tmux_scroll(session, x_cmd, n)
+  vim.fn.system({
+    'tmux', 'copy-mode', '-t', session, ';',
+    'send-keys', '-X', '-t', session, '-N', tostring(n or 3), x_cmd,
+  })
+end
+
+local function attach_tmux_scroll_maps(buf)
+  local o = { buffer = buf, silent = true }
+  local function at_top() return vim.fn.line('w0') == 1 and vim.fn.winline() == 1 end
+  local function at_bot()
+    return vim.fn.line('w$') == vim.fn.line('$') and vim.fn.winline() == vim.fn.winheight(0)
+  end
+  local function scroll(x_cmd, n)
+    local s = vim.b.tmux_session
+    if s then tmux_scroll(s, x_cmd, n) end
+  end
+  vim.keymap.set('n', 'k', function()
+    if at_top() then scroll('scroll-up', 3) else vim.cmd('normal! k') end
+  end, o)
+  vim.keymap.set('n', 'j', function()
+    if at_bot() then scroll('scroll-down', 3) else vim.cmd('normal! j') end
+  end, o)
+  vim.keymap.set('n', '<C-u>', function() scroll('halfpage-up') end, o)
+  vim.keymap.set('n', '<C-d>', function() scroll('halfpage-down') end, o)
+  vim.keymap.set('n', '<C-b>', function() scroll('page-up') end, o)
+  vim.keymap.set('n', '<C-f>', function() scroll('page-down') end, o)
+  vim.keymap.set('n', '<ScrollWheelUp>',   function() scroll('scroll-up', 3) end, o)
+  vim.keymap.set('n', '<ScrollWheelDown>', function() scroll('scroll-down', 3) end, o)
+  -- back into terminal mode → unfreeze the pane
+  vim.api.nvim_create_autocmd('ModeChanged', {
+    buffer = buf,
+    pattern = '*:t',
+    callback = function()
+      local s = vim.b.tmux_session
+      if s then vim.fn.system({ 'tmux', 'send-keys', '-X', '-t', s, 'cancel' }) end
+    end,
+  })
+end
+
 -- Open a :terminal in the current window running a fresh tmux session, lcd'd to
 -- `dir`. Records the session name in b:tmux_session for terminal-mode <C-t>.
 local function open_tmux_terminal(dir)
@@ -218,6 +267,7 @@ local function open_tmux_terminal(dir)
   vim.cmd('lcd ' .. vim.fn.fnameescape(dir))
   vim.cmd('terminal tmux new-session -s ' .. session)
   vim.b.tmux_session = session
+  attach_tmux_scroll_maps(0)
   vim.cmd('startinsert')
 end
 

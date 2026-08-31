@@ -3,14 +3,13 @@ if not ok then return end
 
 harpoon:setup()
 
--- <C-g>: add current file to harpoon list
--- mirrors VSCode ctrl+g (vscode-harpoon.addEditor)
-vim.keymap.set('n', '<C-g>', function() harpoon:list():add() end, { desc = 'Harpoon: add file' })
+-- <leader>g: add current file to harpoon list
+vim.keymap.set('n', '<leader>g', function() harpoon:list():add() end, { desc = 'Harpoon: add file' })
 
--- <leader>h: toggle harpoon quick menu
--- (was <C-q>, mirroring VSCode ctrl+q; <C-q> is now "close tmux pane" in the
--- terminal and freeing it here keeps the key meaning one thing)
-vim.keymap.set('n', '<leader>h', function() harpoon.ui:toggle_quick_menu(harpoon:list()) end, { desc = 'Harpoon: quick menu' })
+-- <C-g>: toggle harpoon quick menu
+-- (add-file moved to <leader>g; menu was <C-q> then briefly <leader>h. <C-q> is
+--  now "close tmux pane" in the terminal.)
+vim.keymap.set('n', '<C-g>', function() harpoon.ui:toggle_quick_menu(harpoon:list()) end, { desc = 'Harpoon: quick menu' })
 
 -- <C-1> through <C-9>: jump to harpoon slot
 -- mirrors VSCode ctrl+1-9 (vscode-harpoon.gotoEditor1-9)
