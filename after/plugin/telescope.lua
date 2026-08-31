@@ -211,19 +211,35 @@ vim.keymap.set('n', '<leader>fb', builtin.buffers, { desc = 'Telescope: buffers'
 local tmux_session_seq = 0
 
 -- <C-e> in a tmux terminal: dump the pane's scrollback (history + current
--- screen) into a scratch buffer in this window and jump to the bottom. It is a
--- real, modifiable buffer — visual mode, `/` search, macros, `:g`, edits all
--- work. `i` / `a` / `q` (and <C-e> again) return to the live terminal.
+-- screen) into a scratch buffer, shown as a large split *above* the terminal —
+-- the terminal shrinks to a thin strip at the bottom so you can copy from the
+-- scrollback and paste into the live shell without losing sight of either.
 --
--- This replaces the pre-tmux workflow where <C-e> dropped into terminal-normal
--- mode over a buffer that *was* the scrollback. tmux's alternate screen means
--- the :terminal buffer now only ever holds the visible grid, so the history has
--- to be pulled out with `capture-pane`.
+-- The scrollback buffer is real and modifiable — visual mode, `/` search,
+-- macros, `:g`, edits all work. `i` / `a` / `q` (or <C-e> again *in it*) close
+-- the split. Pressing <C-e> again *from the terminal* while the split is open
+-- re-captures and refreshes it in place.
+--
+-- Pre-tmux, <C-e> dropped into terminal-normal mode over a buffer that *was*
+-- the scrollback; tmux's alternate screen means the :terminal buffer only ever
+-- holds the visible grid, so the history has to be pulled with `capture-pane`.
 local scrollback_seq = 0
+local TERM_STRIP_HEIGHT = 6
+
+local function capture_scrollback(session)
+  local lines = vim.fn.systemlist({
+    'tmux', 'capture-pane', '-p', '-J', '-S', '-', '-t', session,
+  })
+  if vim.v.shell_error ~= 0 then return nil end
+  while #lines > 0 and lines[#lines]:match('^%s*$') do lines[#lines] = nil end
+  if #lines == 0 then lines = { '' } end
+  return lines
+end
 
 local function open_tmux_scrollback()
   local session = vim.b.tmux_session
   local term_buf = vim.api.nvim_get_current_buf()
+  local term_win = vim.api.nvim_get_current_win()
   local to_normal = vim.api.nvim_replace_termcodes('<C-\\><C-n>', true, false, true)
 
   if not session then
@@ -231,14 +247,30 @@ local function open_tmux_scrollback()
     return
   end
 
-  local lines = vim.fn.systemlist({
-    'tmux', 'capture-pane', '-p', '-J', '-S', '-', '-t', session,
-  })
-  if vim.v.shell_error ~= 0 then
+  -- already open for this terminal → refresh in place and focus it
+  local cur = vim.b[term_buf].nvt_scrollback
+  if cur and vim.api.nvim_win_is_valid(cur.win) and vim.api.nvim_buf_is_valid(cur.buf)
+     and vim.api.nvim_win_get_buf(cur.win) == cur.buf then
+    local lines = capture_scrollback(session)
+    if lines then
+      vim.api.nvim_buf_set_lines(cur.buf, 0, -1, false, lines)
+      vim.bo[cur.buf].modified = false
+    end
+    vim.api.nvim_feedkeys(to_normal, 'n', false)
+    vim.schedule(function()
+      if vim.api.nvim_win_is_valid(cur.win) then
+        vim.api.nvim_set_current_win(cur.win)
+        vim.cmd('normal! G')
+      end
+    end)
+    return
+  end
+
+  local lines = capture_scrollback(session)
+  if not lines then
     vim.notify('tmux capture-pane failed', vim.log.levels.ERROR)
     return
   end
-  while #lines > 0 and lines[#lines]:match('^%s*$') do lines[#lines] = nil end
 
   scrollback_seq = scrollback_seq + 1
   local buf = vim.api.nvim_create_buf(false, true)
@@ -249,22 +281,31 @@ local function open_tmux_scrollback()
   vim.bo[buf].modified = false
   pcall(vim.api.nvim_buf_set_name, buf, ('tmux-scrollback://%s/%d'):format(session, scrollback_seq))
 
-  local function back()
-    if vim.api.nvim_buf_is_valid(term_buf) then
-      vim.api.nvim_win_set_buf(0, term_buf)
+  local function close_split()
+    vim.b[term_buf].nvt_scrollback = nil
+    for _, w in ipairs(vim.api.nvim_list_wins()) do
+      if vim.api.nvim_win_get_buf(w) == buf then pcall(vim.api.nvim_win_close, w, true) end
+    end
+    if vim.api.nvim_win_is_valid(term_win) then
+      vim.api.nvim_set_current_win(term_win)
       vim.cmd('startinsert')
     end
   end
   for _, k in ipairs({ 'i', 'a', 'I', 'A', 'q', '<C-e>' }) do
-    vim.keymap.set('n', k, back, { buffer = buf, desc = 'Back to the live terminal' })
+    vim.keymap.set('n', k, close_split, { buffer = buf, desc = 'Close scrollback, back to terminal' })
   end
 
   vim.api.nvim_feedkeys(to_normal, 'n', false)
   vim.schedule(function()
-    if vim.api.nvim_buf_is_valid(buf) then
-      vim.api.nvim_win_set_buf(0, buf)
-      vim.cmd('normal! G')
-    end
+    if not (vim.api.nvim_win_is_valid(term_win) and vim.api.nvim_buf_is_valid(buf)) then return end
+    vim.api.nvim_set_current_win(term_win)
+    vim.cmd('aboveleft split')
+    local sb_win = vim.api.nvim_get_current_win()
+    vim.api.nvim_win_set_buf(sb_win, buf)
+    vim.api.nvim_win_set_height(term_win, TERM_STRIP_HEIGHT)
+    vim.b[term_buf].nvt_scrollback = { win = sb_win, buf = buf }
+    vim.api.nvim_set_current_win(sb_win)
+    vim.cmd('normal! G')
   end)
 end
 
