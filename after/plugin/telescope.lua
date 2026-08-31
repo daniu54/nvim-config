@@ -213,6 +213,13 @@ local function open_tmux_terminal(dir)
   vim.cmd('startinsert')
 end
 
+-- :TmuxTerm — turn the current window into a tmux terminal at the cwd. This is
+-- what zshrc's shell auto-launch calls (`nvim +TmuxTerm .`), so the everyday
+-- terminal — not just the <C-s> / <C-t>T splits — runs tmux.
+vim.api.nvim_create_user_command('TmuxTerm', function()
+  open_tmux_terminal(vim.fn.getcwd())
+end, { desc = 'Open a tmux terminal in the current window' })
+
 -- <C-t>T: open terminal in a vertical split to the side at context directory
 -- works in normal, netrw, and terminal buffers
 local function open_term_side()
