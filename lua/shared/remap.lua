@@ -545,6 +545,13 @@ vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
     callback = function() vim.bo.commentstring = "// %s" end,
 })
 
+-- <C-b>: freed for tmux. tmux (running inside the nvim :terminal) uses C-b as
+-- its prefix key; nvim never intercepted <C-b> in terminal mode so the prefix
+-- already passed through, but the builtin normal-mode <C-b> (page back) is
+-- dropped here too so the key means exactly one thing everywhere. Page back is
+-- still <PageUp> / <leader><BS>.
+vim.keymap.set({ "n", "v" }, "<C-b>", "<Nop>", { desc = "(freed for tmux prefix)" })
+
 -- close current split
 vim.keymap.set("n", "<C-w>x", "<C-w>c", { desc = "Close current split" })
 

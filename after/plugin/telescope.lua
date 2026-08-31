@@ -184,60 +184,64 @@ vim.keymap.set('n', '<leader>fo', builtin.oldfiles, { desc = 'Telescope: recent 
 -- <leader>fb: open buffers
 vim.keymap.set('n', '<leader>fb', builtin.buffers, { desc = 'Telescope: buffers' })
 
+-- Every nvim :terminal runs one tmux session inside it (see ~/.tmux.conf):
+--
+--   nvim -> nvim :terminal -> tmux (session "nvt-<pid>-<n>") -> zsh
+--
+-- All sessions share the one per-user tmux server, so `tmux attach -t <name>`
+-- from any other Windows Terminal window reconnects to that shell — which is
+-- what terminal-mode <C-t> does (open a new WT window attached here, then
+-- close this one). Splitting and new "windows" are tmux's job now: terminal
+-- mode <C-s> forwards the tmux "split pane" chord and <C-n> "new window",
+-- and the C-b prefix passes straight through for everything else.
+--
+-- Nested nvim (nvim run *inside* the nvim terminal) is no longer special-cased:
+-- tmux hides the pane process tree, so the old <C-e>/<C-t>/<C-p> "forward to the
+-- inner nvim" walk could not see it anyway. These keys are now always handled
+-- by the outer nvim.
+
+local tmux_session_seq = 0
+
+-- Open a :terminal in the current window running a fresh tmux session, lcd'd to
+-- `dir`. Records the session name in b:tmux_session for terminal-mode <C-t>.
+local function open_tmux_terminal(dir)
+  tmux_session_seq = tmux_session_seq + 1
+  local session = ('nvt-%d-%d'):format(vim.fn.getpid(), tmux_session_seq)
+  vim.cmd('lcd ' .. vim.fn.fnameescape(dir))
+  vim.cmd('terminal tmux new-session -s ' .. session)
+  vim.b.tmux_session = session
+  vim.cmd('startinsert')
+end
+
 -- <C-t>T: open terminal in a vertical split to the side at context directory
 -- works in normal, netrw, and terminal buffers
 local function open_term_side()
   local dir = ctx_cwd()
   vim.cmd('vsplit')
-  vim.cmd('lcd ' .. vim.fn.fnameescape(dir))
-  vim.cmd('terminal')
-  vim.cmd('startinsert')
+  open_tmux_terminal(dir)
 end
 
--- Find the PID of an nvim process that is a direct child of the given shell pid.
-local function find_inner_nvim_pid(shell_pid)
-  local children = vim.fn.system('pgrep -P ' .. shell_pid)
-  for child_pid in children:gmatch('%d+') do
-    local cmdline = vim.fn.system('cat /proc/' .. child_pid .. '/cmdline 2>/dev/null')
-    if cmdline:match('nvim') then return tonumber(child_pid) end
+-- terminal-mode <C-t>: re-open *this* terminal's tmux session in a new Windows
+-- Terminal window (detaching this one). Continue there, close this window — the
+-- session lives in the shared tmux server, not in either WT window.
+local function reattach_in_new_window()
+  local session = vim.b.tmux_session
+  if not session then
+    vim.notify('<C-t>: this terminal is not running a tmux session', vim.log.levels.WARN)
+    return
   end
-  return nil
-end
-
--- Find the nvim server socket for a given nvim PID by reading $NVIM from one
--- of its child processes (which nvim sets for every process it spawns).
-local function find_nvim_socket(nvim_pid)
-  local children = vim.fn.system('pgrep -P ' .. nvim_pid)
-  for gc_pid in children:gmatch('%d+') do
-    local environ = vim.fn.system('cat /proc/' .. gc_pid .. '/environ 2>/dev/null')
-    local socket = environ:match('NVIM=([^%z]+)') or environ:match('NVIM_LISTEN_ADDRESS=([^%z]+)')
-    if socket and socket ~= '' then return socket end
+  -- tmux knows the pane's live cwd; ctx_cwd() only sees tmux's start dir
+  local dir = vim.fn.system(
+    { 'tmux', 'display-message', '-p', '-t', session, '#{pane_current_path}' }
+  ):gsub('%s+$', '')
+  if vim.v.shell_error ~= 0 or dir == '' then dir = ctx_cwd() end
+  local win_dir = vim.fn.system({ 'wslpath', '-w', dir }):gsub('%s+$', '')
+  local cmd = { 'wt.exe' }
+  if vim.v.shell_error == 0 and win_dir ~= '' then
+    vim.list_extend(cmd, { '-d', win_dir })
   end
-  return nil
-end
-
--- Returns true if the terminal buffer's shell has a child process running nvim.
--- Used to pass <C-t> through to an inner nvim instead of intercepting it.
-local function terminal_child_is_nvim()
-  local pid = vim.b.terminal_job_pid
-  if not pid then return false end
-  return find_inner_nvim_pid(pid) ~= nil
-end
-
--- Returns true if inner nvim's currently focused window is a terminal buffer.
--- Used to decide whether to pass <C-e> through to inner nvim.
-local function inner_nvim_terminal_is_active()
-  local pid = vim.b.terminal_job_pid
-  if not pid then return false end
-  local nvim_pid = find_inner_nvim_pid(pid)
-  if not nvim_pid then return false end
-  local socket = find_nvim_socket(nvim_pid)
-  if not socket then return false end
-  local result = vim.fn.system(
-    'nvim --server ' .. vim.fn.shellescape(socket) ..
-    " --remote-expr \"getbufvar(winbufnr(winnr()), '&buftype')\" 2>/dev/null"
-  )
-  return result:gsub('%s+', '') == 'terminal'
+  vim.list_extend(cmd, { 'wsl.exe', '--', 'tmux', 'new-session', '-A', '-D', '-s', session })
+  vim.fn.jobstart(cmd, { detach = true })
 end
 
 -- <C-t>T: open terminal in vertical split to the side
@@ -379,27 +383,29 @@ end, { desc = 'Move tab right' })
 local function open_term_split()
   local dir = ctx_cwd()
   vim.cmd('rightbelow split')
-  vim.cmd('lcd ' .. vim.fn.fnameescape(dir))
-  vim.cmd('terminal')
-  vim.cmd('startinsert')
+  open_tmux_terminal(dir)
 end
 
 vim.keymap.set('n', '<C-s>', open_term_split, { desc = 'Open terminal in hsplit below at context dir' })
+
+-- terminal-mode <C-s> / <C-n>: forward the tmux prefix (C-b = 0x02) plus a key,
+-- so tmux splits / new windows without the two-key chord.
 vim.keymap.set('t', '<C-s>', function()
-  -- pass C-s through to the shell (sends XOFF; unfreeze with C-q)
-  vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x13')
-end, { desc = 'Pass C-s through to shell/inner nvim' })
+  vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x02%')  -- prefix + %  → split pane, side by side
+end, { desc = 'tmux: split pane (side by side)' })
+vim.keymap.set('t', '<C-n>', function()
+  vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x02c')  -- prefix + c  → new window
+end, { desc = 'tmux: new window' })
 
--- <C-t>/<C-o>: forward to terminal — lets shell/fzf/etc. receive them.
-vim.keymap.set('t', '<C-t>', function()
-  vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x14')
-end, { desc = 'Forward <C-t> to terminal' })
+-- terminal-mode <C-t>: re-open this tmux session in a new Windows Terminal window
+vim.keymap.set('t', '<C-t>', reattach_in_new_window, { desc = 'tmux: re-open this session in a new WT window' })
 
+-- <C-o>: forward to terminal — lets shell/fzf/etc. receive it.
 vim.keymap.set('t', '<C-o>', function()
   vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x0f')
 end, { desc = 'Forward <C-o> to terminal' })
 
--- Exit terminal mode (and pass the escape through to inner nvim if it's running a terminal).
+-- Exit terminal mode — always handled by the outer nvim (see the tmux note above).
 --
 -- Key choice history — why so many candidates were rejected:
 --   <leader><Esc>  — original binding; space (leader) was intercepted on every keypress while
@@ -415,20 +421,31 @@ end, { desc = 'Forward <C-o> to terminal' })
 --                    bash readline's "move cursor to end of line" (C-e) inside nvim terminal
 --                    buffers. Acceptable tradeoff.
 vim.keymap.set('t', '<C-e>', function()
-  if inner_nvim_terminal_is_active() then
-    -- <C-\><C-n> is nvim's built-in terminal escape (0x1c 0x0e)
-    vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x1c\x0e')
-  else
-    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-\\><C-n>', true, false, true), 'n', false)
-  end
-end, { desc = 'Exit terminal mode, or pass C-e through to inner nvim terminal' })
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-\\><C-n>', true, false, true), 'n', false)
+end, { desc = 'Exit terminal mode' })
 
 -- <C-p>: yank history picker (overrides nvim default <C-p> = move up / prev completion)
--- Works in normal and insert mode. Terminal mode forwards bare C-p to the shell.
--- Normal/insert mode: pastes selected text at cursor; re-enters insert mode if triggered from it.
+-- Works in normal, insert and terminal mode.
+-- Normal/insert: pastes selected text at cursor; re-enters insert if triggered from it.
+-- Terminal: pastes the selected text into the shell (tmux/readline), then resumes insert.
 vim.keymap.set('t', '<C-p>', function()
-  vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x10')
-end, { desc = 'Forward <C-p> to terminal' })
+  local job = vim.b.terminal_job_id
+  require('telescope').extensions.neoclip.default({
+    attach_mappings = function(_, map)
+      local actions = require('telescope.actions')
+      local state   = require('telescope.actions.state')
+      local function on_select(bufnr)
+        local entry = state.get_selected_entry()
+        actions.close(bufnr)
+        if entry then vim.api.nvim_chan_send(job, table.concat(entry.contents, '\n')) end
+        vim.cmd('startinsert')
+      end
+      map('i', '<CR>', on_select)
+      map('n', '<CR>', on_select)
+      return true
+    end,
+  })
+end, { desc = 'Yank history picker → paste into shell' })
 
 vim.keymap.set({ 'n', 'i' }, '<C-p>', function()
   local was_insert = vim.api.nvim_get_mode().mode == 'i'
