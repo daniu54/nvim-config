@@ -210,56 +210,63 @@ vim.keymap.set('n', '<leader>fb', builtin.buffers, { desc = 'Telescope: buffers'
 
 local tmux_session_seq = 0
 
--- Scroll the tmux pane's history from nvim normal mode.
+-- <C-e> in a tmux terminal: dump the pane's scrollback (history + current
+-- screen) into a scratch buffer in this window and jump to the bottom. It is a
+-- real, modifiable buffer — visual mode, `/` search, macros, `:g`, edits all
+-- work. `i` / `a` / `q` (and <C-e> again) return to the live terminal.
 --
--- With tmux driving the alternate screen, the nvim :terminal buffer only ever
--- holds the current screenful — there is no scrollback to move through after
--- <C-e> like there used to be. Instead, drive tmux's own copy-mode: `j`/`k` at
--- the top/bottom screen edge (and <C-d>/<C-u>, the wheel) enter copy-mode and
--- scroll; nvim re-renders whatever tmux then shows, so you can still visually
--- select and yank the scrolled-in text into a register. Re-entering terminal
--- mode cancels copy-mode and drops back to the live prompt.
-local function tmux_scroll(session, x_cmd, n)
-  vim.fn.system({
-    'tmux', 'copy-mode', '-t', session, ';',
-    'send-keys', '-X', '-t', session, '-N', tostring(n or 3), x_cmd,
+-- This replaces the pre-tmux workflow where <C-e> dropped into terminal-normal
+-- mode over a buffer that *was* the scrollback. tmux's alternate screen means
+-- the :terminal buffer now only ever holds the visible grid, so the history has
+-- to be pulled out with `capture-pane`.
+local scrollback_seq = 0
+
+local function open_tmux_scrollback()
+  local session = vim.b.tmux_session
+  local term_buf = vim.api.nvim_get_current_buf()
+  local to_normal = vim.api.nvim_replace_termcodes('<C-\\><C-n>', true, false, true)
+
+  if not session then
+    vim.api.nvim_feedkeys(to_normal, 'n', false)  -- plain terminal-normal mode
+    return
+  end
+
+  local lines = vim.fn.systemlist({
+    'tmux', 'capture-pane', '-p', '-J', '-S', '-', '-t', session,
   })
-end
-
-local function attach_tmux_scroll_maps(buf)
-  local o = { buffer = buf, silent = true }
-  local function at_top() return vim.fn.line('w0') == 1 and vim.fn.winline() == 1 end
-  local function at_bot()
-    return vim.fn.line('w$') == vim.fn.line('$') and vim.fn.winline() == vim.fn.winheight(0)
+  if vim.v.shell_error ~= 0 then
+    vim.notify('tmux capture-pane failed', vim.log.levels.ERROR)
+    return
   end
-  local function scroll(x_cmd, n)
-    local s = vim.b.tmux_session
-    if s then tmux_scroll(s, x_cmd, n) end
-  end
-  vim.keymap.set('n', 'k', function()
-    if at_top() then scroll('scroll-up', 3) else vim.cmd('normal! k') end
-  end, o)
-  vim.keymap.set('n', 'j', function()
-    if at_bot() then scroll('scroll-down', 3) else vim.cmd('normal! j') end
-  end, o)
-  vim.keymap.set('n', '<C-u>', function() scroll('halfpage-up') end, o)
-  vim.keymap.set('n', '<C-d>', function() scroll('halfpage-down') end, o)
-  vim.keymap.set('n', '<C-b>', function() scroll('page-up') end, o)
-  vim.keymap.set('n', '<C-f>', function() scroll('page-down') end, o)
-  vim.keymap.set('n', '<ScrollWheelUp>',   function() scroll('scroll-up', 3) end, o)
-  vim.keymap.set('n', '<ScrollWheelDown>', function() scroll('scroll-down', 3) end, o)
-end
+  while #lines > 0 and lines[#lines]:match('^%s*$') do lines[#lines] = nil end
 
--- Re-entering terminal mode in a tmux terminal → cancel copy-mode so the pane
--- snaps back to the live prompt. ModeChanged does not accept `buffer`, so this
--- is one global autocmd guarded on b:tmux_session.
-vim.api.nvim_create_autocmd('ModeChanged', {
-  pattern = '*:t',
-  callback = function()
-    local s = vim.b.tmux_session
-    if s then vim.fn.system({ 'tmux', 'send-keys', '-X', '-t', s, 'cancel' }) end
-  end,
-})
+  scrollback_seq = scrollback_seq + 1
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].buftype = 'nofile'
+  vim.bo[buf].bufhidden = 'wipe'
+  vim.bo[buf].swapfile = false
+  vim.bo[buf].modified = false
+  pcall(vim.api.nvim_buf_set_name, buf, ('tmux-scrollback://%s/%d'):format(session, scrollback_seq))
+
+  local function back()
+    if vim.api.nvim_buf_is_valid(term_buf) then
+      vim.api.nvim_win_set_buf(0, term_buf)
+      vim.cmd('startinsert')
+    end
+  end
+  for _, k in ipairs({ 'i', 'a', 'I', 'A', 'q', '<C-e>' }) do
+    vim.keymap.set('n', k, back, { buffer = buf, desc = 'Back to the live terminal' })
+  end
+
+  vim.api.nvim_feedkeys(to_normal, 'n', false)
+  vim.schedule(function()
+    if vim.api.nvim_buf_is_valid(buf) then
+      vim.api.nvim_win_set_buf(0, buf)
+      vim.cmd('normal! G')
+    end
+  end)
+end
 
 -- Open a :terminal in the current window running a fresh tmux session, lcd'd to
 -- `dir`. Records the session name in b:tmux_session for terminal-mode <C-t>.
@@ -269,7 +276,6 @@ local function open_tmux_terminal(dir)
   vim.cmd('lcd ' .. vim.fn.fnameescape(dir))
   vim.cmd('terminal tmux new-session -s ' .. session)
   vim.b.tmux_session = session
-  attach_tmux_scroll_maps(0)
   vim.cmd('startinsert')
 end
 
@@ -460,7 +466,9 @@ vim.keymap.set('t', '<C-o>', function()
   vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x0f')
 end, { desc = 'Forward <C-o> to terminal' })
 
--- Exit terminal mode — always handled by the outer nvim (see the tmux note above).
+-- <C-e> — leave the terminal. In a tmux terminal it opens the pane's scrollback
+-- as a scratch buffer (see open_tmux_scrollback); anywhere else it just drops to
+-- terminal-normal mode.
 --
 -- Key choice history — why so many candidates were rejected:
 --   <leader><Esc>  — original binding; space (leader) was intercepted on every keypress while
@@ -475,9 +483,7 @@ end, { desc = 'Forward <C-o> to terminal' })
 --   <C-e>          — chosen: no Windows/Whim conflict, no kitty KP needed. Only cost: loses
 --                    bash readline's "move cursor to end of line" (C-e) inside nvim terminal
 --                    buffers. Acceptable tradeoff.
-vim.keymap.set('t', '<C-e>', function()
-  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-\\><C-n>', true, false, true), 'n', false)
-end, { desc = 'Exit terminal mode' })
+vim.keymap.set('t', '<C-e>', open_tmux_scrollback, { desc = 'Terminal scrollback (tmux) / exit terminal mode' })
 
 -- <C-p>: yank history picker (overrides nvim default <C-p> = move up / prev completion)
 -- Works in normal, insert and terminal mode.
