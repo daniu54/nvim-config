@@ -184,7 +184,7 @@ vim.keymap.set('n', '<leader>fo', builtin.oldfiles, { desc = 'Telescope: recent 
 -- <leader>fb: open buffers
 vim.keymap.set('n', '<leader>fb', builtin.buffers, { desc = 'Telescope: buffers' })
 
--- <C-t>t: open terminal in a vertical split to the side at context directory
+-- <C-t>T: open terminal in a vertical split to the side at context directory
 -- works in normal, netrw, and terminal buffers
 local function open_term_side()
   local dir = ctx_cwd()
@@ -240,11 +240,11 @@ local function inner_nvim_terminal_is_active()
   return result:gsub('%s+', '') == 'terminal'
 end
 
--- <C-t>t: open terminal in vertical split to the side
-vim.keymap.set('n', '<C-t>t', open_term_side, { desc = 'Open terminal in vertical split at context dir' })
+-- <C-t>T: open terminal in vertical split to the side
+vim.keymap.set('n', '<C-t>T', open_term_side, { desc = 'Open terminal in vertical split at context dir' })
 
--- <C-t>T: open a new *detached* Windows Terminal window at the context directory.
--- The window-manager sibling of <C-t>t (which splits inside this nvim); it is the
+-- <C-t>t: open a new *detached* Windows Terminal window at the context directory.
+-- The window-manager sibling of <C-t>T (which splits inside this nvim); it is the
 -- `tw` zsh alias (`wt.exe -d "$(wslpath -w .)"`) inlined, since a non-interactive
 -- shell would not see that alias.
 local function open_term_window()
@@ -257,7 +257,7 @@ local function open_term_window()
   -- detach: the window must outlive this nvim, and nvim must not wait on it
   vim.fn.jobstart({ 'wt.exe', '-d', win_dir }, { detach = true })
 end
-vim.keymap.set('n', '<C-t>T', open_term_window, { desc = 'Open new Windows Terminal window at context dir' })
+vim.keymap.set('n', '<C-t>t', open_term_window, { desc = 'Open new Windows Terminal window at context dir' })
 
 -- <C-t>n: new empty tab
 vim.keymap.set('n', '<C-t>n', function() vim.cmd('tabnew') end, { desc = 'New tab' })
