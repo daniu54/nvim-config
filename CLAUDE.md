@@ -21,8 +21,12 @@ packer.nvim is gone and fully replaced. `plugin/packer_compiled.lua` is gitignor
 
 ```
 init.lua                    — entry point: requires("shared")
+excalidraw-style.json       — the look sheet for :ExportToExcalidraw
+excalidraw-style.md         — its key reference
 lua/shared/
   init.lua                  — loads remap, set, packer, wt_colors
+  md_document.lua           — markdown → typed blocks + treesitter code tokens
+  excalidraw_style.lua      — loads excalidraw-style.json
   lazy.lua                  — plugin definitions (lazy.nvim)
   remap.lua                 — keymaps
   set.lua                   — vim options
@@ -31,6 +35,8 @@ lua/shared/
 after/plugin/
   autosave.lua              — autosave file-backed buffers (:AutoSaveToggle)
   markdown_convert.lua      — :ConvertToPdf/:ConvertToTex/:ConvertToWord via mdpdf
+  markdown_excalidraw.lua   — :ExportToExcalidraw (whole document → canvas)
+  excalidraw_render.lua     — :ExcalidrawRender (```mermaid blocks only)
   markdown_table.lua        — Obsidian-style table editing (<Tab>/<CR> grow the table)
   colors.lua                — colorscheme (rose-pine) + all custom highlight groups (Search, terminal visual, NetrwDotfile, etc.)
   conform.lua               — formatter config
@@ -104,6 +110,66 @@ Markdown authoring features mdpdf adds on top of pandoc:
   `[text](#My Section Title)`. For a target that is not a heading, put
   `{#the-spot}` on a line of its own. Links work inside table cells. A link
   resolving to nothing is reported on stderr rather than silently dead.
+
+## markdown → excalidraw (:ExportToExcalidraw)
+
+`after/plugin/markdown_excalidraw.lua` exports the **whole** buffer to an
+Excalidraw canvas — headings, prose, lists, quotes, tables, syntax-highlighted
+code, embedded images and every ```mermaid block — laid out in one column, as
+if it had been typed there. `:ExcalidrawRender` (diagrams only) stays as it is;
+this is the document-shaped sibling of `:ConvertToPdf` / `:ConvertToWord`, and
+it reads the same mdpdf dialect (`/title`, `/comment`, `/ignore`../`/endignore`,
+`/newline`, `/toc`, `{#id}`/`{.notoc}`, the `#anchor Heading` fence line), so a
+document written for mdpdf exports here unchanged. **`/newpage` is parsed and
+dropped** — a canvas has no pages.
+
+- `:ExportToExcalidraw` writes `<stem>.excalidraw` beside the document and
+  opens it in the local editor; a re-export overwrites it, like re-running
+  `:ConvertToPdf`. **Edits made in the canvas are lost on the next export** —
+  the markdown is the source.
+- `:ExportToExcalidraw!` renders to a scratch file under `stdpath("cache")`
+  instead, for a look at a document you do not want an `.excalidraw` next to.
+- The look is `excalidraw-style.json` at the config root (keys documented in
+  `excalidraw-style.md`) — one file, no profiles, so the command takes no
+  argument. A canvas is one look; a second profile was churn with nothing to
+  choose between.
+
+**Half of this feature lives in ~/excalidraw-src/app** (`src/document.js`), and
+the split is the design: laying a document out needs a browser. Wrapping a line
+means measuring a string in a font; a mermaid diagram lays out in a DOM; an
+image has to be decoded to learn its size; and Excalidraw's per-font line
+height is not exported by the package, so it is read off a converted element.
+None of that is available in Lua.
+
+So this file does only what can be decided by reading text — parsing markdown
+into typed blocks (`lua/shared/md_document.lua`), tokenising code with
+treesitter, reading images into data URLs, resolving the style — and hands the
+result to `exapp-render-doc`, which POSTs it to `/api/render-document` in the
+running editor. Same hand-off as `:ExcalidrawRender`, same reason.
+
+Things worth knowing:
+
+- **Code is highlighted with nvim's own treesitter queries**, and the payload
+  carries *capture names*, not colours: the style file maps
+  `keyword`/`string`/`comment`/… to colours, so an export does not depend on
+  whichever colorscheme happened to be active. A language with no parser
+  installed falls back to one colour in the code font, which is the documented
+  fallback and not an error. `@spell` and friends are skipped — most queries
+  attach `@spell` on top of comments, and letting it win repaints them.
+- **A list is one text element**, markers and indents included, ordered and
+  unordered alike. Two elements per bullet aligns hanging indents to the pixel
+  and is miserable to edit.
+- **Inline emphasis is stripped**, because a text element has one font and one
+  colour: `**deadline**` would otherwise read as a word with asterisks stuck to
+  it. A paragraph or a list that points at exactly one URL keeps it as the
+  element's link, which is the one piece of inline markup that survives.
+- **Only a line that is nothing but an image becomes an image**; an image in
+  the middle of a sentence stays as its alt text. Images are embedded as data
+  URLs (so the scene file carries them), capped at 8 MB, and a remote or
+  unreadable one leaves a dashed red placeholder naming the path rather than
+  disappearing.
+- The buffer is exported, not the file on disk — unlike mdpdf, nothing re-reads
+  the file, so there is no forced write first.
 
 ## markdown tables (ported from Obsidian)
 

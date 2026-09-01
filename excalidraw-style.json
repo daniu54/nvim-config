@@ -1,0 +1,104 @@
+{
+  "page": { "contentWidth": 820, "background": "#ffffff" },
+  "roughness": 0,
+  "fonts": { "body": "Nunito", "heading": "Nunito", "code": "Cascadia" },
+
+  "title": { "size": 36, "color": "#1e1e1e", "gapAfter": 34 },
+
+  "headings": {
+    "1": { "size": 28, "color": "#1e1e1e", "gapBefore": 30, "gapAfter": 14 },
+    "2": { "size": 24, "color": "#1e1e1e", "gapBefore": 26, "gapAfter": 12 },
+    "3": { "size": 20, "color": "#1e1e1e", "gapBefore": 22, "gapAfter": 10 },
+    "4": { "size": 20, "color": "#495057", "gapBefore": 20, "gapAfter": 10 },
+    "5": { "size": 16, "color": "#495057", "gapBefore": 18, "gapAfter": 8 },
+    "6": { "size": 16, "color": "#868e96", "gapBefore": 18, "gapAfter": 8 }
+  },
+
+  "paragraph": { "size": 20, "color": "#1e1e1e", "gapAfter": 22 },
+
+  "list": {
+    "size": 20,
+    "color": "#1e1e1e",
+    "indent": 32,
+    "gapAfter": 22,
+    "bullets": ["•", "–", "◦"],
+    "checked": "[x]",
+    "unchecked": "[ ]"
+  },
+
+  "quote": {
+    "size": 20,
+    "color": "#5f6b7a",
+    "barColor": "#868e96",
+    "barWidth": 6,
+    "indent": 24,
+    "gapAfter": 22
+  },
+
+  "code": {
+    "size": 16,
+    "padding": 14,
+    "background": "#f6f6f8",
+    "border": "#c9ccd4",
+    "text": "#24292f",
+    "lineNumbers": true,
+    "rounded": false,
+    "wrap": true,
+    "lineNumberColor": "#a2a6ad",
+    "headingSize": 16,
+    "headingColor": "#6b7280",
+    "gapAfter": 26,
+    "tokens": {
+      "keyword": "#cf222e",
+      "conditional": "#cf222e",
+      "repeat": "#cf222e",
+      "exception": "#cf222e",
+      "include": "#cf222e",
+      "string": "#0a3069",
+      "character": "#0a3069",
+      "number": "#0550ae",
+      "boolean": "#0550ae",
+      "float": "#0550ae",
+      "constant": "#0550ae",
+      "comment": "#6e7781",
+      "function": "#8250df",
+      "method": "#8250df",
+      "constructor": "#8250df",
+      "type": "#953800",
+      "attribute": "#953800",
+      "tag": "#116329",
+      "property": "#0550ae",
+      "field": "#0550ae",
+      "variable": "#24292f",
+      "parameter": "#24292f",
+      "operator": "#cf222e",
+      "punctuation": "#57606a",
+      "label": "#953800",
+      "namespace": "#953800",
+      "text.title": "#0550ae",
+      "markup.heading": "#0550ae"
+    }
+  },
+
+  "table": {
+    "size": 18,
+    "color": "#1e1e1e",
+    "border": "#868e96",
+    "headerBackground": "#eef0f4",
+    "cellBackground": "transparent",
+    "cellPaddingX": 12,
+    "cellPaddingY": 8,
+    "minColumnWidth": 70,
+    "gapAfter": 26
+  },
+
+  "image": { "gapAfter": 26, "captionSize": 14, "captionColor": "#6b7280" },
+
+  "diagram": { "gapAfter": 34, "fontSize": 20, "fitToWidth": true },
+
+  "rule": { "color": "#c9ccd4", "gapAfter": 26 },
+
+  "spacer": { "height": 24 },
+
+  "toc": { "size": 20, "color": "#1e1e1e", "indent": 26, "gapAfter": 26 }
+}
