@@ -155,9 +155,16 @@ than "filetype is markdown", and both narrowings are load-bearing:**
 
 `after/plugin/markdown_edit.lua` ports the surround/list bindings from the
 Obsidian vimrc (`/mnt/d/obsidian_notes/default_vault/default/.obsidian.vimrc`)
-so the same muscle memory works here. Every mapping is normal mode (word under
+so the same muscle memory works here. Every mapping is normal mode (WORD under
 the cursor) *and* visual mode (the selection), and every one is a **toggle** —
 pressing it again on already-wrapped text strips the delimiters.
+
+The normal-mode target is `iW`, not `iw`: punctuation attached to the word goes
+*inside* the wrap, so `` ` `` on `--word` gives `` `--word` `` rather than
+``--`word` ``, and `foo.bar()` wraps whole. The cost is that a WORD also
+swallows the delimiters of an *existing* wrap, so the toggle peels a matching
+leading/trailing pair back off the span before deciding whether it is wrapped
+(`shrink_wrapped`; `toggle_link` does the same for the `[text](url)` shape).
 
 | key | does | overrides |
 | --- | --- | --- |

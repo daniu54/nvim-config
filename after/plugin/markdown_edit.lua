@@ -5,8 +5,9 @@
 -- Each mapping works two ways, exactly like `exmap … surround` does in
 -- obsidian-vimrc-support:
 --   * visual mode — wraps the selection
---   * normal mode — wraps the word under the cursor (the Obsidian vimrc spells
---     this `nmap ~ viw~`; here it is done directly, no visual round-trip)
+--   * normal mode — wraps the WORD under the cursor (the Obsidian vimrc spells
+--     this `nmap ~ viw~`; here it is done directly, no visual round-trip, and
+--     with iW rather than iw — see word_bounds)
 --
 -- The wrap is a *toggle*: pressing the same key on already-wrapped text strips
 -- the delimiters again rather than nesting a second pair.
@@ -28,25 +29,46 @@
 -- the <leader>l… LSP/Copilot prefix both survive in code. <leader>q duplicates
 -- " deliberately, as a leader-side alias for the same double-quote wrap.
 
--- Byte range of the word under the cursor, or nil when the cursor is not on
--- one (whitespace, punctuation). Returns 1-indexed inclusive columns.
+-- Byte range of the WORD under the cursor, or nil when the cursor sits on
+-- whitespace. Returns 1-indexed inclusive columns.
+--
+-- This is iW, not iw: a WORD is a run of non-blanks, so leading and trailing
+-- punctuation lands inside the wrap. With the cursor on --word, the code
+-- toggle produces the whole flag wrapped, not just the "word" half of it,
+-- which is what you want for a flag, a path or a foo.bar() call — and is the
+-- one thing iw cannot express.
 local function word_bounds()
   local line = vim.fn.getline(".")
   local col  = vim.fn.col(".")
   local i    = 1
   while true do
-    local ms, me = line:find("[%w_]+", i)
+    local ms, me = line:find("%S+", i)
     if not ms or col < ms then return nil end
     if col <= me then return ms, me end
     i = me + 1
   end
 end
 
+-- Because the WORD swallows punctuation, it also swallows the delimiters of an
+-- existing wrap: the already-wrapped --word is a single WORD, delimiters and
+-- all. Peel them back off so the toggle still sees the text it wrapped and
+-- can strip it again.
+local function shrink_wrapped(line, s, e, left, right)
+  if e - s + 1 >= #left + #right
+    and line:sub(s, s + #left - 1) == left
+    and line:sub(e - #right + 1, e) == right
+  then
+    return s + #left, e - #right
+  end
+  return s, e
+end
+
 -- The region a mapping should act on, as (start_line, start_col, end_line,
 -- end_col) with 1-indexed inclusive byte columns.
 --   visual:  the selection (linewise selections cover the full lines)
---   normal:  the word under the cursor, or an empty span at the cursor
-local function target_range(visual)
+--   normal:  the WORD under the cursor, or an empty span at the cursor;
+--            `shrink` (optional) peels an existing wrap back off it
+local function target_range(visual, shrink)
   if visual then
     local vmode = vim.fn.mode()
     -- leaving visual mode is what publishes the '< and '> marks
@@ -67,6 +89,7 @@ local function target_range(visual)
 
   local s, e = word_bounds()
   local l = vim.fn.line(".")
+  if s and shrink then s, e = shrink(vim.fn.getline(l), s, e) end
   if not s then
     -- not on a word: act on an empty span at the cursor
     local col = vim.fn.col(".")
@@ -79,7 +102,9 @@ end
 -- Returns the column just after the inserted `left` on line sl, which is where
 -- the cursor belongs for a fresh empty wrap.
 local function toggle_surround(left, right, visual)
-  local sl, sc, el, ec = target_range(visual)
+  local sl, sc, el, ec = target_range(visual, function(line, s, e)
+    return shrink_wrapped(line, s, e, left, right)
+  end)
   local first, last = vim.fn.getline(sl), vim.fn.getline(el)
 
   if first:sub(sc - #left, sc - 1) == left and last:sub(ec + 1, ec + #right) == right then
@@ -134,7 +159,12 @@ end
 -- empty parens, ready for the URL. Pressing it on an existing [text](…) link
 -- unwraps it back to plain text.
 local function toggle_link(visual)
-  local sl, sc, el, ec = target_range(visual)
+  -- same peel as toggle_surround, for the [text](url) shape
+  local sl, sc, el, ec = target_range(visual, function(line, s, e)
+    local text = line:sub(s, e):match("^%[(.-)%]%(.-%)$")
+    if text then return s + 1, s + #text end
+    return s, e
+  end)
   local first, last = vim.fn.getline(sl), vim.fn.getline(el)
 
   local url = last:match("^%]%((.-)%)", ec + 1)
