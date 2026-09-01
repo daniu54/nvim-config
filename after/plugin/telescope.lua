@@ -84,44 +84,48 @@ local function in_tab(opts)
   return opts
 end
 
--- The tmux target for this terminal buffer.
+-- The tmux target for this terminal buffer: the session that is on screen in it
+-- *right now*, as a session id ($N).
 --
--- b:tmux_session holds a session *id* ($N), not the name the session was
--- created with. Renaming a session — C-b $ , or Rename in the C-b S menu —
--- leaves every `-t <name>` lookup failing with "can't find pane", which is how
--- <C-e> ends up reporting "tmux capture-pane failed". Ids never change.
--- (Renaming a *window* is harmless: the target names the session, not it.)
+-- What is on screen is a property of the tmux client, not of the session the
+-- terminal was opened with, and the two drift apart in two ways:
 --
--- Terminals opened before this held a name instead; those get upgraded in place
--- the first time they are used, and one whose name is *already* gone is found
--- by the pty it is running on — a tmux client reports that as client_tty, and
--- no rename touches it.
+--   C-b $  renames the session, so the name recorded at creation stops
+--          resolving — `-t nvt-73820-1` then fails with "can't find pane",
+--          which surfaced as "tmux capture-pane failed".
+--   C-b s  switches the client to a different session, and the old one lives on
+--          detached — so the recorded name still resolves, just to the wrong
+--          session, and <C-e> quietly showed a stale pane's scrollback.
+--
+-- So ask the client. It is found by the pty it runs on, which nothing renames or
+-- switches, and it reports the session it is currently displaying. b:tmux_session
+-- is only the fallback for when there is no client left to ask (the terminal was
+-- closed, or tmux is gone).
 local function tmux_target()
   local stored = vim.b.tmux_session
   if not stored then return nil end               -- not a tmux terminal
-  if stored:match('^%$%d+$') then return stored end
 
-  local id = vim.fn.system({ 'tmux', 'display-message', '-p', '-t', stored, '#{session_id}' })
-    :gsub('%s+$', '')
-  if vim.v.shell_error ~= 0 or not id:match('^%$%d+$') then
-    id = nil
-    local pid = vim.b.terminal_job_pid
-    local tty = pid and vim.fn.resolve('/proc/' .. pid .. '/fd/0') or ''
-    if tty:match('^/dev/pts/%d+$') then
-      local clients = vim.fn.systemlist(
-        { 'tmux', 'list-clients', '-F', '#{client_tty} #{session_id}' })
+  local pid = vim.b.terminal_job_pid
+  local tty = pid and vim.fn.resolve('/proc/' .. pid .. '/fd/0') or ''
+  if tty:match('^/dev/pts/%d+$') then
+    local clients = vim.fn.systemlist(
+      { 'tmux', 'list-clients', '-F', '#{client_tty} #{session_id}' })
+    if vim.v.shell_error == 0 then
       for _, line in ipairs(clients) do
         local ctty, cid = line:match('^(%S+)%s+(%$%d+)$')
-        if ctty == tty then
-          id = cid
-          break
-        end
+        if ctty == tty then return cid end
       end
     end
-    if not id then return stored end              -- nothing left to go on
   end
-  vim.b.tmux_session = id
-  return id
+
+  if stored:match('^%$%d+$') then return stored end
+  local id = vim.fn.system({ 'tmux', 'display-message', '-p', '-t', stored, '#{session_id}' })
+    :gsub('%s+$', '')
+  if vim.v.shell_error == 0 and id:match('^%$%d+$') then
+    vim.b.tmux_session = id
+    return id
+  end
+  return stored                                   -- nothing left to go on
 end
 
 -- Resolve the "context" directory for the current buffer:
