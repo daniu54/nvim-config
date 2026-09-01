@@ -84,6 +84,46 @@ local function in_tab(opts)
   return opts
 end
 
+-- The tmux target for this terminal buffer.
+--
+-- b:tmux_session holds a session *id* ($N), not the name the session was
+-- created with. Renaming a session — C-b $ , or Rename in the C-b S menu —
+-- leaves every `-t <name>` lookup failing with "can't find pane", which is how
+-- <C-e> ends up reporting "tmux capture-pane failed". Ids never change.
+-- (Renaming a *window* is harmless: the target names the session, not it.)
+--
+-- Terminals opened before this held a name instead; those get upgraded in place
+-- the first time they are used, and one whose name is *already* gone is found
+-- by the pty it is running on — a tmux client reports that as client_tty, and
+-- no rename touches it.
+local function tmux_target()
+  local stored = vim.b.tmux_session
+  if not stored then return nil end               -- not a tmux terminal
+  if stored:match('^%$%d+$') then return stored end
+
+  local id = vim.fn.system({ 'tmux', 'display-message', '-p', '-t', stored, '#{session_id}' })
+    :gsub('%s+$', '')
+  if vim.v.shell_error ~= 0 or not id:match('^%$%d+$') then
+    id = nil
+    local pid = vim.b.terminal_job_pid
+    local tty = pid and vim.fn.resolve('/proc/' .. pid .. '/fd/0') or ''
+    if tty:match('^/dev/pts/%d+$') then
+      local clients = vim.fn.systemlist(
+        { 'tmux', 'list-clients', '-F', '#{client_tty} #{session_id}' })
+      for _, line in ipairs(clients) do
+        local ctty, cid = line:match('^(%S+)%s+(%$%d+)$')
+        if ctty == tty then
+          id = cid
+          break
+        end
+      end
+    end
+    if not id then return stored end              -- nothing left to go on
+  end
+  vim.b.tmux_session = id
+  return id
+end
+
 -- Resolve the "context" directory for the current buffer:
 --   netrw  → directory being browsed
 --   terminal → shell's actual cwd via /proc/<pid>/cwd
@@ -95,9 +135,10 @@ local function ctx_cwd()
   if vim.bo.buftype == 'terminal' then
     -- a tmux terminal: terminal_job_pid is the tmux client, whose cwd is frozen
     -- at launch — ask tmux for the active pane's live directory instead
-    if vim.b.tmux_session then
+    local target = tmux_target()
+    if target then
       local p = vim.fn.system(
-        { 'tmux', 'display-message', '-p', '-t', vim.b.tmux_session, '#{pane_current_path}' }
+        { 'tmux', 'display-message', '-p', '-t', target, '#{pane_current_path}' }
       ):gsub('%s+$', '')
       if vim.v.shell_error == 0 and p ~= '' then return p end
     end
@@ -237,7 +278,7 @@ local function capture_scrollback(session)
 end
 
 local function open_tmux_scrollback()
-  local session = vim.b.tmux_session
+  local session = tmux_target()
   local term_buf = vim.api.nvim_get_current_buf()
   local term_win = vim.api.nvim_get_current_win()
   local to_normal = vim.api.nvim_replace_termcodes('<C-\\><C-n>', true, false, true)
@@ -310,13 +351,23 @@ local function open_tmux_scrollback()
 end
 
 -- Open a :terminal in the current window running a fresh tmux session, lcd'd to
--- `dir`. Records the session name in b:tmux_session for terminal-mode <C-t>.
+-- `dir`. Records the session id in b:tmux_session (see tmux_target).
 local function open_tmux_terminal(dir)
   tmux_session_seq = tmux_session_seq + 1
   local session = ('nvt-%d-%d'):format(vim.fn.getpid(), tmux_session_seq)
   vim.cmd('lcd ' .. vim.fn.fnameescape(dir))
-  vim.cmd('terminal tmux new-session -s ' .. session)
-  vim.b.tmux_session = session
+  -- Two steps rather than one create-and-attach, purely to learn the id:
+  -- detached creation prints it, and attaching by name straight afterwards is
+  -- safe because the name is still the one we just gave it.
+  local id = vim.fn.system(
+    { 'tmux', 'new-session', '-d', '-P', '-F', '#{session_id}', '-s', session, '-c', dir }
+  ):gsub('%s+$', '')
+  if vim.v.shell_error ~= 0 or not id:match('^%$%d+$') then
+    id = nil  -- tmux refused; fall back to creating it from inside the terminal
+  end
+  vim.cmd('terminal tmux ' .. (id and ('attach-session -t ' .. session)
+                                  or  ('new-session -s ' .. session)))
+  vim.b.tmux_session = id or session
   vim.cmd('startinsert')
 end
 
