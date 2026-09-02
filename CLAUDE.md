@@ -35,6 +35,7 @@ lua/shared/
 after/plugin/
   autosave.lua              — autosave file-backed buffers (:AutoSaveToggle)
   yanks.lua                 — :Yanks, the yank history as a buffer
+  git_review.lua            — :GitReview, the branch's commits+diffs as markdown
   markdown_convert.lua      — :ConvertToPdf/:ConvertToTex/:ConvertToWord via mdpdf
   markdown_excalidraw.lua   — :ExportToExcalidraw (whole document → canvas)
   excalidraw_render.lua     — :ExcalidrawRender (```mermaid blocks only)
@@ -310,6 +311,78 @@ table, run on every yank. `history` is therefore set to **200**, well below the
 default 1000 — that number is the count of rows rewritten per `yy`. (`history`
 is also the only cap that exists. `db_max_entries`, which this config used to
 set, is not a neoclip setting at all; unknown keys are accepted and ignored.)
+
+## git review (`:GitReview`)
+
+`after/plugin/git_review.lua` renders a whole branch — the uncommitted changes
+first, then the whole branch aggregated into one net diff, then every commit
+with its message and its per-file diffs — as **one scratch markdown buffer**,
+oldest commit first, and nothing else. It is the answer to reviewing by opening the
+changed files one at a time, which loses both the order the work happened in
+and the message explaining why.
+
+Every review plugin in the ecosystem (diffview.nvim, octo.nvim,
+gh-review.nvim, reviewthem.nvim, codereview.nvim) answers the same problem with
+a **file tree plus a side-by-side pane**: a UI to drive, usually with its own
+state directory and often a `gh` dependency. This answers it with a *document*
+you read top to bottom. None of them is installed here; there are no git
+plugins in this config at all.
+
+**Being an ordinary buffer is the whole point** — the same argument as `:Yanks`
+in `after/plugin/yanks.lua`. `/`, `n`, visual mode, `yy`, marks and folds work
+because it is text, so there is nothing to learn.
+
+- **Uncommitted work comes first**, split into `staged` / `unstaged` /
+  `untracked` and labelled per file, because it is the part still in your hands:
+  everything below it is history and cannot be edited. Staged and unstaged are
+  kept apart rather than merged into one `git diff HEAD` — when you are about to
+  commit, which half a hunk is in is the thing you are checking. An untracked
+  file is diffed against `/dev/null` so it renders as all `+`; one over 128 KiB
+  is named and not shown, so a stray `node_modules` cannot become the review.
+- **`## All changes` is the same work with the commits taken out**: the range's
+  start diffed against the working tree (untracked files included), one `###`
+  section per file. It sits *above* the commit sections because it is what a
+  reviewer reads first — the commits answer *how did this happen*, this answers
+  *what does it come to*, which is the shape you sign off on and the one a
+  series with a fix-up commit in it hides. It is omitted when there is no range
+  to aggregate over, since the uncommitted section would then be the whole of
+  it.
+- No argument on a feature branch is the intended use: everything since the
+  merge base with the base branch (`origin/HEAD`'s target, else the first of
+  `main`/`master`/`trunk`/`develop` that exists). **On the base branch itself it
+  refuses and asks for a depth** rather than guessing — how far down `main`
+  counts as "this work" is not something the command can know. That refusal is
+  *soft*: with a dirty tree it still renders the uncommitted section and prints
+  the message as a note, since "what have I changed" is the usual reason to run
+  this on `main` at all.
+- `:GitReview 10` (a depth), `:GitReview v1.2` / `<branch>` (a base to take the
+  merge base with), `:GitReview a..b` (a range verbatim). `<Tab>` completes refs.
+- `:GitReview!` opens a vsplit next to the code instead of a new tab.
+- `<CR>` opens the file at the diff line under the cursor, in the window
+  `:GitReview` was called from. `]]`/`[[` move by commit, `R` refreshes, `q`
+  closes, `zM` folds to one line per commit (headings drive the fold expr).
+
+Things worth knowing:
+
+- **The diffs are ` ```diff ` fenced so markdown's treesitter injection colours
+  them**, which is why the output is markdown rather than a bespoke filetype —
+  +/- highlighting costs nothing here. The fence is grown to one backtick longer
+  than the longest run inside the chunk, because a diff of a markdown file
+  contains fences of its own and a plain ` ``` ` would end the block mid-patch.
+- **Merges are excluded** (`--no-merges`): `git show` prints no diff for one
+  anyway, and on a feature branch they are merges *from* the base bringing in
+  other people's work, which is not what is under review. The header says so.
+- One `git show` per commit, split on `diff --git` lines here, rather than a
+  `git show -- <file>` per file — a 40-file commit is one process, not forty.
+  `index`/`---`/`+++` lines are dropped as noise (the `###` heading already
+  names the file, with its +/- counts); `new file`/`deleted`/`rename`/`Binary`
+  lines are kept, since a hunk cannot say those.
+- `<CR>` works off an index built **while rendering**: each emitted line that
+  exists on the `+` side of a hunk records its new-file line number, counted
+  from the `@@` header. Nothing is re-parsed on the jump, so the mapping cannot
+  drift from what is on screen.
+- One buffer, reused (again as `:Yanks`) — a second `:GitReview` refreshes it
+  rather than stacking windows onto stale copies of a branch that moves.
 
 ## autosave
 
