@@ -261,9 +261,17 @@ local tmux_session_seq = 0
 -- scrollback and paste into the live shell without losing sight of either.
 --
 -- The scrollback buffer is real and modifiable — visual mode, `/` search,
--- macros, `:g`, edits all work. `i` / `a` / `q` (or <C-e> again *in it*) close
--- the split. Pressing <C-e> again *from the terminal* while the split is open
--- re-captures and refreshes it in place.
+-- macros, `:g`, edits all work. `i` (or <C-e> again *in it*) closes the split;
+-- <C-i> is insert mode *in the scrollback*, since `i` is spoken for. Those two
+-- are the only keys this buffer takes: `a`, `I`, `A` and `q` used to close it
+-- too, which meant append, insert-at-line-start and macro recording were all
+-- unreachable in a buffer whose whole point is that it edits like any other.
+-- Pressing <C-e> again *from the terminal* while the split is open re-captures
+-- and refreshes it in place.
+--
+-- <C-i> and <Tab> are the same byte to a terminal, so this also rebinds <Tab>
+-- (jump-forward in the jumplist) inside this buffer — nothing to jump to in a
+-- scratch buffer, so it costs nothing.
 --
 -- Pre-tmux, <C-e> dropped into terminal-normal mode over a buffer that *was*
 -- the scrollback; tmux's alternate screen means the :terminal buffer only ever
@@ -336,9 +344,11 @@ local function open_tmux_scrollback()
       vim.cmd('startinsert')
     end
   end
-  for _, k in ipairs({ 'i', 'a', 'I', 'A', 'q', '<C-e>' }) do
+  for _, k in ipairs({ 'i', '<C-e>' }) do
     vim.keymap.set('n', k, close_split, { buffer = buf, desc = 'Close scrollback, back to terminal' })
   end
+  vim.keymap.set('n', '<C-i>', function() vim.cmd('startinsert') end,
+    { buffer = buf, desc = 'Insert mode in the scrollback buffer' })
 
   vim.api.nvim_feedkeys(to_normal, 'n', false)
   vim.schedule(function()
