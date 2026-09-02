@@ -556,6 +556,43 @@ vim.keymap.set('t', '<A-j>', term_send('\x02j'), { desc = 'tmux: select pane dow
 vim.keymap.set('t', '<A-k>', term_send('\x02k'), { desc = 'tmux: select pane up' })
 vim.keymap.set('t', '<A-l>', term_send('\x02l'), { desc = 'tmux: select pane right' })
 
+-- <C-k>/<C-j>: scroll the program in the pane, by synthesising a mouse wheel
+-- event rather than a key. Every terminal here runs tmux with `mouse on`
+-- (~/.tmux.conf), so tmux (or whatever full-screen program inside the pane has
+-- turned mouse reporting on — less, lazygit, an inner nvim) reads the wheel and
+-- scrolls its own scrollback / copy-mode. There is no key that means "scroll"
+-- to all of them; the wheel is the one input they all already understand.
+--
+-- The bytes are an SGR (1006) mouse report — `ESC [ < <button> ; <col> ; <row> M`
+-- — with button 64 = wheel up, 65 = wheel down. Coordinates are 1-based and
+-- client-wide, which is exactly what wincol()/winline() give (the terminal grid
+-- is the window), so the event lands in the pane holding the cursor: the active
+-- one. A pane whose program has *not* enabled mouse reporting would see the
+-- sequence as typed text, but with tmux always in between that case does not
+-- arise here.
+--
+-- Cost: the shell no longer receives C-j (readline accept-line, same as <CR>)
+-- or C-k (kill-to-end-of-line). C-k is the real loss; scrolling without
+-- reaching for the mouse was worth more.
+--
+-- Mapped buffer-locally on TermOpen, i.e. only in this nvim's :terminal
+-- buffers. Terminal mode implies a terminal buffer anyway, but keeping the maps
+-- off the global table means C-j/C-k are untouched everywhere else, including
+-- for anything that puts a non-terminal buffer in a terminal-ish mode.
+local function term_wheel(button)
+  return function()
+    local job = vim.b.terminal_job_id
+    if not job then return end
+    vim.api.nvim_chan_send(job, ('\27[<%d;%d;%dM'):format(button, vim.fn.wincol(), vim.fn.winline()))
+  end
+end
+vim.api.nvim_create_autocmd('TermOpen', {
+  callback = function(ev)
+    vim.keymap.set('t', '<C-k>', term_wheel(64), { buffer = ev.buf, desc = 'Scroll pane up (mouse wheel up)' })
+    vim.keymap.set('t', '<C-j>', term_wheel(65), { buffer = ev.buf, desc = 'Scroll pane down (mouse wheel down)' })
+  end,
+})
+
 -- terminal-mode <C-t>: "fork" — open a new Windows Terminal window at this
 -- pane's live cwd. It boots the full stack fresh (zsh → nvim → :terminal →
 -- tmux → zsh, via the zshrc auto-launch), an independent session. This window

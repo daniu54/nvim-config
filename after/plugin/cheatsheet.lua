@@ -122,6 +122,7 @@ local lines = {
   "   <C-h> / <C-l>    tmux: previous / next window (see bar)    ",
   "   <C-\\> / <C-]>   tmux: move window left / right (wraps)    ",
   "   <A-h/j/k/l>      tmux: move between panes                  ",
+  "   <C-k> / <C-j>    scroll pane up / down (sends mouse wheel) ",
   "   <C-q>            tmux: close pane                          ",
   "   <C-t>            fork: new WT window at this pane's cwd     ",
   "   <C-p>            yank-history picker -> paste into shell   ",
