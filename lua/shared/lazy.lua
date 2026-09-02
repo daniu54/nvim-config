@@ -137,12 +137,25 @@ require("lazy").setup({
         dependencies = { 'nvim-lua/plenary.nvim', 'kkharji/sqlite.lua' },
         config = function()
             require('neoclip').setup({
-                -- Persist yank history to SQLite so it survives restarts and is
-                -- shared between all nvim instances (outer terminal nvim + inner nvim).
+                -- Persist yank history to SQLite so it survives restarts.
                 enable_persistent_history = true,
                 db_path = vim.fn.stdpath('data') .. '/neoclip.sqlite3',
-                -- Keep up to 1000 entries in the persistent store.
-                db_max_entries = 1000,
+                -- One global history across every *concurrently running* nvim:
+                -- the outer terminal nvim, an inner nvim in a tmux pane, another
+                -- window entirely. Without this the db is read once at startup
+                -- and written once on VimLeavePre, so two nvims open at the same
+                -- time never see each other's yanks -- and whichever exits last
+                -- overwrites the table with its own view, losing the other's.
+                -- With it, the picker pulls before it opens and every yank pushes.
+                --
+                -- The cost is that a push is a delete-all + reinsert-all of the
+                -- whole table, on every yank. Hence `history` well below the
+                -- default 1000: that is the number of rows rewritten per `yy`.
+                continuous_sync = true,
+                -- The cap on the history, in memory and in the db alike.
+                -- (`db_max_entries`, which this used to set, is not a neoclip
+                -- setting at all -- unknown keys are accepted and ignored.)
+                history = 200,
             })
         end,
     },

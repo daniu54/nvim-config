@@ -34,6 +34,7 @@ lua/shared/
   copilot.lua               — shared Copilot infra (bootstrap, sensitive-file check, opt-in helper, <Right>/<S-Right>)
 after/plugin/
   autosave.lua              — autosave file-backed buffers (:AutoSaveToggle)
+  yanks.lua                 — :Yanks, the yank history as a buffer
   markdown_convert.lua      — :ConvertToPdf/:ConvertToTex/:ConvertToWord via mdpdf
   markdown_excalidraw.lua   — :ExportToExcalidraw (whole document → canvas)
   excalidraw_render.lua     — :ExcalidrawRender (```mermaid blocks only)
@@ -274,6 +275,41 @@ all-bullets; only an all-bullet run is stripped.
 `<S-BS>` / `<C-BS>` are mapped to `<C-u>` alongside `<leader><BS>`, but most
 terminals (Windows Terminal included) send a plain `<BS>` for these, so they may
 never fire. `<leader><BS>` stays the reliable page-up.
+
+## yank history (`<C-p>` picker + `:Yanks` buffer)
+
+There is **one** yank history, and it is global: every yank in every nvim goes
+into a sqlite store (`~/.local/share/nvim/neoclip.sqlite3`, neoclip, configured
+in `lua/shared/lazy.lua`), and every nvim reads that same store. Two ways in:
+
+- **`<C-p>`** (`after/plugin/telescope.lua`) — the telescope picker, in normal,
+  insert *and* terminal mode. Fuzzy-find an entry and it is put at the cursor;
+  in a terminal it is written into the shell's stdin instead.
+- **`:Yanks`** (`after/plugin/yanks.lua`) — the same history as an ordinary
+  buffer in a split below (`:Yanks!` for a vsplit on the right). `<CR>` loads the
+  entry under the cursor into the unnamed register and closes; `p`/`P` paste it
+  into the window `:Yanks` was called from; `d` deletes it from the history
+  (everywhere — it is the shared store); `R` refreshes; `q` closes.
+
+The picker is for "I know what I want, find it". The buffer is for reading the
+history, comparing two entries, or taking three lines out of the middle of one:
+it renders the entries' text **verbatim** with headers in between, precisely so
+that `/`, visual mode and `yy` work on it. One buffer, reused — a second
+`:Yanks` refreshes it rather than opening another window onto a stale copy.
+
+**`continuous_sync = true` is what makes "global" true of *concurrently
+running* instances**, and it is easy to assume without it. Persistence alone
+(`enable_persistent_history`) reads the db once at startup and writes it once on
+`VimLeavePre`, so an outer terminal nvim and an inner nvim in a tmux pane never
+see each other's yanks — and whichever exits last overwrites the table with its
+own view, silently dropping the other's. With continuous sync the picker pulls
+before it opens and every yank pushes.
+
+The cost is real: neoclip's push is a *delete-all + reinsert-all* of the whole
+table, run on every yank. `history` is therefore set to **200**, well below the
+default 1000 — that number is the count of rows rewritten per `yy`. (`history`
+is also the only cap that exists. `db_max_entries`, which this config used to
+set, is not a neoclip setting at all; unknown keys are accepted and ignored.)
 
 ## autosave
 
