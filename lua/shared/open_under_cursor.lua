@@ -198,7 +198,7 @@ function M.resolve(token)
   if name ~= "" then table.insert(candidates, vim.fn.fnamemodify(name, ":h") .. "/" .. token) end
 
   for _, c in ipairs(candidates) do
-    if exists(c) then return vim.fn.fnamemodify(c, ":p"):gsub("/$", "") end
+    if exists(c) then return (vim.fn.fnamemodify(c, ":p"):gsub("/$", "")) end
   end
   return nil
 end

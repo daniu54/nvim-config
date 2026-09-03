@@ -268,61 +268,19 @@ vim.keymap.set("n", "gx", function()
   require("shared.open_under_cursor").open_under_cursor({ url_only = true })
 end, { desc = "Open URL under cursor" })
 
--- open path under cursor in a new nvim window (WSL → Windows Terminal)
+-- open path under cursor in a new nvim window (WSL → Windows Terminal).
+-- Same detection as <CR> (shared.open_under_cursor), different destination.
 vim.keymap.set("n", "<leader>gf", function()
-  local line = vim.fn.getline(".")
-  local col = vim.fn.col(".") - 1  -- 0-indexed
-
-  -- Find path-like token at cursor position (stops at parens, quotes, spaces)
-  local path_pat = "[%w_%.%/%-][%w_%.%/%-]*"
-  local s = 1
-  local token = nil
-  while true do
-    local ms, me = line:find(path_pat, s)
-    if not ms then break end
-    if ms - 1 <= col and col <= me - 1 then
-      token = line:sub(ms, me)
-      break
-    end
-    s = me + 1
-  end
-
-  if not token then
+  local ouc = require("shared.open_under_cursor")
+  local target = ouc.detect(vim.api.nvim_get_current_line(), vim.fn.col(".") - 1)
+  if not target or target.kind ~= "path" then
     vim.notify("No path under cursor", vim.log.levels.WARN)
     return
   end
-
-  -- Strip trailing :line_number and punctuation
-  token = token:gsub(":%d+.*$", ""):gsub("[%.%,%;]+$", "")
-
-  local function exists(p) return vim.fn.filereadable(p) == 1 or vim.fn.isdirectory(p) == 1 end
-
-  local function open_resolved(resolved)
-    local dir = vim.fn.fnamemodify(resolved, ":h")
-    local win_dir = vim.fn.system("wslpath -w " .. vim.fn.shellescape(dir)):gsub("\n$", "")
-    vim.fn.jobstart({ "wt.exe", "-d", win_dir, "wsl.exe", "nvim", resolved })
-  end
-
-  local resolved = nil
-
-  if token:sub(1, 2) == "./" or token:sub(1, 1) ~= "/" then
-    -- relative: try cwd/token (stripping leading ./ if present)
-    local clean = token:gsub("^%./", "")
-    local candidate = vim.fn.getcwd() .. "/" .. clean
-    if exists(candidate) then resolved = vim.fn.fnamemodify(candidate, ":p") end
-  end
-
-  if not resolved and token:sub(1, 1) == "/" then
-    -- absolute
-    if exists(token) then resolved = token end
-  end
-
-  if not resolved then
-    vim.notify("Path not found: " .. token, vim.log.levels.WARN)
-    return
-  end
-
-  open_resolved(resolved)
+  local dir = vim.fn.isdirectory(target.path) == 1 and target.path
+    or vim.fn.fnamemodify(target.path, ":h")
+  local win_dir = vim.fn.system("wslpath -w " .. vim.fn.shellescape(dir)):gsub("\n$", "")
+  vim.fn.jobstart({ "wt.exe", "-d", win_dir, "wsl.exe", "nvim", target.path })
 end, { desc = "Open path under cursor in new window" })
 
 -- yp: copy full path of current file to Windows clipboard (mirrors netrw yp)

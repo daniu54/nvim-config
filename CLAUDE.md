@@ -28,6 +28,7 @@ lua/shared/
   md_document.lua           — markdown → typed blocks + treesitter code tokens
   yank_store.lua            — the yank history: an append-only JSON-lines log
   nvfuzzy.lua               — the editor half of the shell's `nv <pattern>`
+  open_under_cursor.lua     — <CR> on a path/URL: nvim, Firefox or Explorer
   excalidraw_style.lua      — loads excalidraw-style.json
   lazy.lua                  — plugin definitions (lazy.nvim)
   remap.lua                 — keymaps
@@ -360,6 +361,63 @@ typing". Verified through the real chain, tmux included: tmux forwards mode 2004
 from the pane's application to its client, so the outer nvim sees it. zsh
 honours it too, which also stops it executing every line but the last of a
 multi-line paste. A program that never asked for it (`cat`) still gets raw text.
+
+## clickable paths and URLs (`<CR>` in normal mode)
+
+`lua/shared/open_under_cursor.lua` makes whatever is under the cursor
+followable with `<CR>`, in **any** buffer and in a **terminal buffer's normal
+mode** too, which is where it earns its keep — a stack trace, a `grep` hit, a
+build log naming a pdf it just wrote.
+
+| under the cursor | `<CR>` does |
+| --- | --- |
+| a URL (or a bare `www.…`) | `~/bin/open-url` → Firefox on the Windows side |
+| a text file | opens it in a **new tab** (focused if already open) |
+| `file:12` / `file:12:5` | the same, on that line and column |
+| a directory | a new tab, netrw |
+| a pdf/image/office/archive/binary | `explorer.exe /select,` — the containing folder, with the file selected |
+
+**`<CR>` opens a tab; `gf` still opens in place.** That is the whole reason the
+key is `<CR>` and not a remap of `gf`: following a path should never cost you
+the window you were reading, which is the same argument `nv` and `:GitReview`
+make. `gx` and `<leader>gf` are now thin callers of this module — one detector,
+three destinations (browser / this nvim / a new Windows Terminal nvim).
+
+Things worth knowing:
+
+- **Nothing under the cursor falls through to the builtin `<CR>`**, so the key
+  is not lost; `quickfix` and `prompt` buffers are skipped outright, since
+  `<CR>` there is a buffer default rather than a mapping and would otherwise be
+  shadowed. Every buffer-local `<CR>` in this config — netrw, `:Yanks`,
+  `:GitReview`, `nvfuzzy`, markdown tables, cmp — shadows this map on its own
+  and needed no changes.
+- **A path only counts if it exists on disk.** There is no "did you mean";
+  prose with a dot in it is left alone and gets the builtin `<CR>`.
+- **In a terminal, relative paths resolve against the *shell's* cwd**, read
+  from `/proc/<terminal_job_pid>/cwd` — nvim's cwd is the wrong answer for a
+  shell that has `cd`'d. The pid is walked *down* through single children
+  first, because the pane usually holds tmux → zsh → (nvim), and it is the
+  innermost one that has the cwd you are looking at.
+- Resolution order is the buffer's own directory, then nvim's cwd, then the
+  file's directory; `~`, `$VARs`, `file://` URLs and **Windows paths**
+  (`D:\obsidian_notes`, via `wslpath -u`) all resolve.
+- A **quoted or bracketed span wins over the bare token** — `"my docs/a.md"`,
+  `[text](path)`, `<path>` — which is how a path with a space in it works at
+  all. It is only taken when it contains a `/` or `://`, so ordinary quoted
+  prose is not mistaken for a path.
+- Text-or-not is an **extension list first, then a NUL sniff** of the first
+  KiB. The list exists so a 2 GB `.mkv` is never read, and it also holds a few
+  files that *are* text but that you want the OS handler for anyway (`.svg`,
+  `.drawio`).
+
+The shell half is `explorer [path]` in `~/dotfiles/zshrc` (alias `ex`): the
+same "select the file in its folder" behaviour from the command line. It
+returns 0 explicitly because `explorer.exe` exits 1 even on success.
+
+Plugins for this exist (pathfinder.nvim, gx.nvim, url-open) and none was used:
+every one of them ends at `vim.ui.open`, and the entire question here is what
+happens *after* that — Firefox through PowerShell, `wslpath`, `explorer.exe
+/select` — which is WSL-specific and already written in this config.
 
 ## fuzzy file open (`nv <pattern>` from the shell)
 
