@@ -447,6 +447,13 @@ end
 -- Fence languages are written the way file extensions are (`js`, `ps1`, `yml`);
 -- parsers are named after filetypes. Try the alias table, then vim's own
 -- filetype detection on a fake filename, then the word itself.
+--
+-- The table is exported as `M.LANG_ALIASES` because the *editor* needs the same
+-- mapping: markdown's treesitter injection resolves a fence's info string
+-- through `vim.treesitter.language.get_lang`, which only knows filetypes, so
+-- ```js highlights as nothing until the alias is registered. lua/shared/lazy.lua
+-- registers every entry here at startup -- one list, so a fence that exports
+-- coloured also renders coloured.
 local LANG_ALIASES = {
   js = "javascript",
   jsx = "javascript",
@@ -475,6 +482,8 @@ local LANG_ALIASES = {
   plaintext = nil,
   text = nil,
 }
+
+M.LANG_ALIASES = LANG_ALIASES
 
 -- Captures that carry no colour of their own. @spell in particular is attached
 -- *on top of* comments and strings by most queries, so letting it win would

@@ -53,6 +53,28 @@ plugin/
   packer_compiled.lua       — gitignored, stale packer artifact
 ```
 
+## code blocks in markdown are highlighted per language
+
+A ```` ```cs ```` block in a markdown buffer is coloured as C#, not as one flat
+`@markup.raw.block` blue. **No plugin does this** — markdown's own treesitter
+grammar *injects* the fence's language, so the whole feature is two things being
+true in `lua/shared/lazy.lua`:
+
+- **The parser is installed.** `ensure_installed` is therefore also the list of
+  languages a fence can be coloured in: `java`, `c_sharp`, `kotlin`,
+  `javascript`, `typescript`, `tsx`, `html`, `css`, `sql`, `mermaid`, `json`,
+  `bash`, `python`, plus `lua`/`markdown`/`markdown_inline`/`yaml`/`zig`. A
+  language with no parser falls back to the flat fence colour — that is the
+  symptom, not an error.
+- **The fence word resolves to a parser.** Injection resolves the info string
+  through `vim.treesitter.language.get_lang`, which knows *filetypes* — so
+  ```` ```cs ```` works for free (nvim-treesitter registers `c_sharp` for
+  filetype `cs`) while ```` ```js ````, ```` ```ts ```` and ```` ```yml ````
+  resolve to nothing. The config registers `md_document.LANG_ALIASES` — the
+  same table `:ExportToExcalidraw` highlights code with — as filetype aliases at
+  startup, so **a fence that exports coloured also renders coloured**, and there
+  is one list to add to rather than two.
+
 ## markdown export (:ConvertToPdf / :ConvertToTex / :ConvertToWord)
 
 `after/plugin/markdown_convert.lua` drives the `mdpdf` binary

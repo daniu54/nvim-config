@@ -121,10 +121,32 @@ require("lazy").setup({
         tag = 'v0.9.3',
         build = ':TSUpdate',
         config = function()
+            -- The list is also the list of languages a ```fence in a markdown
+            -- buffer gets coloured in: markdown highlights a fenced block by
+            -- *injecting* the fence's language, so a block whose parser is
+            -- missing stays one flat colour (@markup.raw.block) -- which is
+            -- exactly what a ```cs block looked like before c_sharp was here.
             require('nvim-treesitter.configs').setup({
-                ensure_installed = { 'javascript', 'typescript', 'tsx', 'lua', 'markdown', 'markdown_inline', 'yaml', 'zig', 'kotlin' },
+                ensure_installed = {
+                    'lua', 'markdown', 'markdown_inline', 'yaml', 'zig',
+                    -- fullstack: the languages that show up in ```fences
+                    'java', 'c_sharp', 'kotlin',
+                    'javascript', 'typescript', 'tsx',
+                    'html', 'css', 'sql', 'mermaid',
+                    'json', 'bash', 'python',
+                },
                 highlight = { enable = true },
             })
+
+            -- Injection resolves a fence's info string through
+            -- `vim.treesitter.language.get_lang`, which maps *filetypes* to
+            -- parsers -- so ```cs works (nvim-treesitter registers c_sharp for
+            -- filetype `cs`) while ```js, ```ts and ```yml do not, there being
+            -- no such filetype. Register the export path's alias table so the
+            -- two agree; `register` adds a filetype, it does not replace one.
+            for alias, lang in pairs(require('shared.md_document').LANG_ALIASES) do
+                pcall(vim.treesitter.language.register, lang, alias)
+            end
         end,
     },
 
