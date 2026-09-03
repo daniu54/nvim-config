@@ -374,34 +374,54 @@ case-insensitively, 50 levels down (`-t`: 1 level), hidden files included,
 
 What arrives is split in two, and the split is the point:
 
-- **The best 10 hits open as background tabs** — real tabs, loaded and
-  highlighted, but the cursor never leaves the results tab. A search hit
-  landing on you mid-keystroke is exactly what this avoids.
-- **Every hit is listed in a results buffer** in the first tab: plain paths,
-  an ordinary scratch buffer. Same argument as `:Yanks` and `:GitReview` —
-  `/`, `n`, visual mode, `yy`, `gf` and marks all work because it is text.
-  `<CR>` opens the path under the cursor in a tab *next to the results tab*
-  (a directory opens as netrw, and a file already open just gets focused, via
+- **The best 5 hits become tabs 1–5**, left of the results tab, and **only the
+  first one takes the cursor** — everything after it lands behind you. A
+  search hit yanking you out of the file you are reading is what this avoids;
+  landing on the best hit is what you asked for.
+- **Every hit is listed in a results buffer**, which is always the **last**
+  tab: plain paths, an ordinary scratch buffer. Same argument as `:Yanks` and
+  `:GitReview` — `/`, `n`, visual mode, `yy`, `gf` and marks all work because
+  it is text. `<CR>` opens the path under the cursor in a tab (a directory
+  opens as netrw, and a file already open just gets focused, via
   `shared.tab_utils`); `R` re-runs, `q` closes.
 - **With no hits** the buffer says so and lists two levels of the directory
   you ran in — "then what *is* here?" is the next question either way.
 
+### breadth-first, without a timer
+
+fd walks depth-first, so the first things it prints are whatever directory it
+descended into first — `init.lua` at the root losing to ten files four levels
+down. **The search therefore runs in depth bands** — `[1,1]`, `[2,2]`,
+`[3,50]` — spawned at once but **released in order**: a band's hits are held
+until every shallower band has *exited*. What reaches you is breadth-first.
+
+- **The gate is a process exit, not a clock.** In an ordinary repo the deep
+  band is released after ~50 ms, sooner than any timer worth setting; in a
+  huge tree it waits exactly as long as the shallow sweeps actually take. An
+  earlier version used a fixed 150 ms grace window instead — this is both
+  faster and correctly ordered.
+- **The bands stop at 2 because that is where the cost/benefit turns.** Each
+  band is one more walk down to its depth. Measured on a pathological home
+  directory (where a full 50-level walk does not finish inside a minute) band
+  1 costs 0.33 s and band 2 costs 0.09 s; in an ordinary repo all of them are
+  ~0.05 s. Two shallow bands buy correct ordering for the root and the level
+  under it, which is where the file you meant almost always is. Depth 3 and
+  below arrives in walk order.
+- A band that was held long enough to queue hits up is **ranked before it is
+  let out**, since by definition it is all in hand at once. The *listing* is
+  always fully ranked and re-ranks as it grows.
+
 Things worth knowing:
 
-- **Ranking and streaming pull against each other.** A rank needs the whole
-  result set, which is the one thing this refuses to wait for. So the tabs are
-  chosen after a **150 ms grace window** (`GRACE_MS`) over whatever has
-  arrived, not from the raw arrival order (which in a deep tree is whichever
-  directory fd walked into first — `init.lua` at the root losing to ten files
-  four levels down) and not from the finished search. A small tree finishes
-  inside the window and gets its true top ten. The *listing* is always ranked,
-  and re-ranks as it grows.
-- The order is exact basename > basename stem > prefix > substring, then the
+- The rank is exact basename > basename stem > prefix > substring, then the
   shallowest path, then the shorter name. `-f` opens the top of that and
-  nothing else, stopping early on an exact basename match.
+  nothing else, stopping at the first *released* hit — which is from the
+  shallowest band with anything in it, so it does not wait out a 50-level
+  walk.
 - fd (`fdfind`) matches the basename by default and its pattern is an
   unanchored regex, so a plain `api` already means `.*api.*` with no wrapping.
-  `find` is the fallback when fd is missing and needs `*pattern*` written out.
+  `find` is the fallback when fd is missing and needs `*pattern*` written out;
+  both take `--min-depth`/`-mindepth`, which is what makes the banding work.
 - Hard-stopped at 2000 hits (`MAX_HITS`) — a pattern that loose is a mistake,
   not a search — and the header says when that happened.
 - **An explicit path is a path, not a pattern.** The shell function opens an
@@ -414,7 +434,8 @@ output is read line by line and echoed as it is found (measured: first line at
 0.5 s of a 2.4 s walk), which is also why `f` cannot rank — only `f -f`, which
 has to see everything, does. It is fed by process substitution rather than a
 pipeline because zsh runs *every* stage of a pipeline in a subshell, so piping
-into the loop would print eagerly but lose the count.
+into the loop would print eagerly but lose the count. The suspended-job helper
+that used to own the name `f` is now `fp` / `fplist` (`~/dotfiles/zshrc.jobs`).
 
 ## tab management (`<C-f>` chord)
 
