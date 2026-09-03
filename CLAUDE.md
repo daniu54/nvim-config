@@ -393,11 +393,25 @@ Things worth knowing:
   and needed no changes.
 - **A path only counts if it exists on disk.** There is no "did you mean";
   prose with a dot in it is left alone and gets the builtin `<CR>`.
-- **In a terminal, relative paths resolve against the *shell's* cwd**, read
-  from `/proc/<terminal_job_pid>/cwd` — nvim's cwd is the wrong answer for a
-  shell that has `cd`'d. The pid is walked *down* through single children
-  first, because the pane usually holds tmux → zsh → (nvim), and it is the
-  innermost one that has the cwd you are looking at.
+- **In a terminal, relative paths resolve against the *shell's* cwd** — nvim's
+  cwd is the wrong answer for a shell that has `cd`'d, and `f`/`fd`/`grep` all
+  print relative paths. **Getting there needs tmux**, and that is the whole
+  subtlety: the `:terminal` here runs `tmux attach-session`, and a tmux pane's
+  shell is a child of the tmux **server**, not of the client nvim spawned — so
+  `/proc/<terminal_job_pid>/cwd` is nvim's *own* cwd and the pane's shell is
+  nowhere in that process tree at all. (This is exactly the bug the first cut
+  shipped with: every relative path in a terminal silently failed to resolve
+  and `<CR>` just moved the cursor down a line.)
+  So tmux is asked: `list-clients` is matched on **client pid** — the job pid,
+  or a descendant of it, since the client may sit under a wrapper — rather than
+  on this config's `nvt-<pid>-<n>` session names, which keeps it working for
+  any tmux. What is taken from tmux is the pane's **pid**, not its path:
+  `#{pane_current_path}` is cached and only refreshed while a client is
+  redrawing, so it can lag a `cd` indefinitely (reproduced), while
+  `/proc/<pane pid>/cwd` is always live. It stays as a fallback.
+  From that pid — or from the job pid directly, with no tmux — the walk goes
+  *down* through single children, because the pane usually holds zsh → (an
+  inner nvim), and it is the innermost one whose cwd you are looking at.
 - Resolution order is the buffer's own directory, then nvim's cwd, then the
   file's directory; `~`, `$VARs`, `file://` URLs and **Windows paths**
   (`D:\obsidian_notes`, via `wslpath -u`) all resolve.

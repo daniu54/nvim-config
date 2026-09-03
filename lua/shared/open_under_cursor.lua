@@ -136,26 +136,73 @@ local function exists(p)
   return vim.fn.filereadable(p) == 1 or vim.fn.isdirectory(p) == 1
 end
 
+-- Walk down from `pid` while there is exactly one child, and return that
+-- process's cwd. The pane may be running something under the shell (an inner
+-- nvim), and it is the innermost one whose cwd you are looking at.
+local function proc_cwd(pid)
+  local cur = tostring(pid)
+  for _ = 1, 6 do
+    local kids = shell({ "bash", "-c", "cat /proc/" .. cur .. "/task/*/children 2>/dev/null" })
+    local list = vim.split(kids, "%s+", { trimempty = true })
+    if #list ~= 1 then break end
+    cur = list[1]
+  end
+  return vim.uv.fs_readlink("/proc/" .. cur .. "/cwd")
+end
+
+-- The cwd of the tmux pane displayed in the terminal whose job is `root_pid`.
+--
+-- This is the case that matters here: an nvim :terminal in this config runs
+-- `tmux attach-session`, and a tmux pane's shell is a child of the tmux
+-- *server*, not of the client nvim spawned. So /proc/<job pid>/cwd is nvim's
+-- own cwd and the pane's shell is nowhere in that process tree at all -- the
+-- only way across the gap is to ask tmux. Matching on client pid rather than on
+-- this config's `nvt-<pid>-<n>` session names keeps it working for any tmux.
+--
+-- tmux is asked for the pane's **pid**, and the cwd is then read from /proc:
+-- `#{pane_current_path}` is cached and only refreshed while a client is
+-- redrawing, so it can lag a `cd` by an arbitrary amount. It is kept as a
+-- fallback for when /proc cannot be read.
+local function tmux_pane_cwd(root_pid)
+  if vim.fn.executable("tmux") ~= 1 then return nil end
+  local out = shell({ "tmux", "list-clients", "-F", "#{client_pid}\t#{pane_pid}\t#{pane_current_path}" })
+  if vim.v.shell_error ~= 0 or out == "" then return nil end
+
+  local by_pid = {}
+  for line in out:gmatch("[^\n]+") do
+    local cpid, ppid, path = line:match("^(%d+)\t(%d+)\t(.*)$")
+    if cpid then by_pid[cpid] = { pane = ppid, path = path } end
+  end
+
+  -- the client may be the job itself or a descendant of it (a wrapper script,
+  -- a shell that exec'd tmux), so walk down
+  local queue, seen = { tostring(root_pid) }, {}
+  for _ = 1, 64 do
+    local cur = table.remove(queue, 1)
+    if not cur then break end
+    local client = by_pid[cur]
+    if client then
+      local cwd = proc_cwd(client.pane)
+      if cwd then return cwd end
+      return client.path ~= "" and client.path or nil
+    end
+    if not seen[cur] then
+      seen[cur] = true
+      local kids = shell({ "bash", "-c", "cat /proc/" .. cur .. "/task/*/children 2>/dev/null" })
+      for k in kids:gmatch("%d+") do table.insert(queue, k) end
+    end
+  end
+  return nil
+end
+
 -- The cwd a relative path in this buffer should be read against. In a terminal
 -- that is the shell's own cwd, which is usually not nvim's.
 function M.buffer_cwd()
   if vim.bo.buftype == "terminal" then
     local pid = vim.b.terminal_job_pid
     if pid then
-      -- the job pid is the shell; the interesting cwd is often a child's
-      -- (tmux -> shell -> nvim), so walk down while there is exactly one child
-      local cur = tostring(pid)
-      for _ = 1, 6 do
-        local link = vim.uv.fs_readlink("/proc/" .. cur .. "/cwd")
-        local kids = shell({ "bash", "-c", "cat /proc/" .. cur .. "/task/*/children 2>/dev/null" })
-        local list = vim.split(kids, "%s+", { trimempty = true })
-        if #list == 1 then
-          cur = list[1]
-        else
-          return link
-        end
-      end
-      return vim.uv.fs_readlink("/proc/" .. cur .. "/cwd")
+      local cwd = tmux_pane_cwd(pid) or proc_cwd(pid)
+      if cwd then return cwd end
     end
   end
   local name = vim.api.nvim_buf_get_name(0)
