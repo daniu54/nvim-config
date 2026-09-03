@@ -27,6 +27,7 @@ lua/shared/
   init.lua                  — loads remap, set, packer, wt_colors
   md_document.lua           — markdown → typed blocks + treesitter code tokens
   yank_store.lua            — the yank history: an append-only JSON-lines log
+  nvfuzzy.lua               — the editor half of the shell's `nv <pattern>`
   excalidraw_style.lua      — loads excalidraw-style.json
   lazy.lua                  — plugin definitions (lazy.nvim)
   remap.lua                 — keymaps
@@ -35,6 +36,7 @@ lua/shared/
   copilot.lua               — shared Copilot infra (bootstrap, sensitive-file check, opt-in helper, <Right>/<S-Right>)
 after/plugin/
   autosave.lua              — autosave file-backed buffers (:AutoSaveToggle)
+  tabs.lua                  — tab management: the <C-f> chord + PageUp/PageDown
   yanks.lua                 — :Yanks / <C-p>, the yank history as a buffer
   git_review.lua            — :GitReview, the branch's commits+diffs as markdown
   markdown_convert.lua      — :ConvertToPdf/:ConvertToTex/:ConvertToWord via mdpdf
@@ -358,6 +360,80 @@ typing". Verified through the real chain, tmux included: tmux forwards mode 2004
 from the pane's application to its client, so the outer nvim sees it. zsh
 honours it too, which also stops it executing every line but the last of a
 multi-line paste. A program that never asked for it (`cat`) still gets raw text.
+
+## fuzzy file open (`nv <pattern>` from the shell)
+
+`nv api` in the shell opens nvim **immediately** and searches from there;
+`lua/shared/nvfuzzy.lua` is the editor half, and the shell half is
+`~/dotfiles/zshrc.nv` (`nv`, `nvf`, `f`; `nv --help`). Nothing is searched
+before nvim starts — that ordering is the whole command. The pattern arrives
+in `NVFUZZY_PATTERN` / `NVFUZZY_TOP` / `NVFUZZY_FIRST` / `NVFUZZY_DIRS` and
+the walk runs as a job, matching `.*pattern.*` against **file names**,
+case-insensitively, 50 levels down (`-t`: 1 level), hidden files included,
+`.git` and gitignored paths out.
+
+What arrives is split in two, and the split is the point:
+
+- **The best 10 hits open as background tabs** — real tabs, loaded and
+  highlighted, but the cursor never leaves the results tab. A search hit
+  landing on you mid-keystroke is exactly what this avoids.
+- **Every hit is listed in a results buffer** in the first tab: plain paths,
+  an ordinary scratch buffer. Same argument as `:Yanks` and `:GitReview` —
+  `/`, `n`, visual mode, `yy`, `gf` and marks all work because it is text.
+  `<CR>` opens the path under the cursor in a tab *next to the results tab*
+  (a directory opens as netrw, and a file already open just gets focused, via
+  `shared.tab_utils`); `R` re-runs, `q` closes.
+- **With no hits** the buffer says so and lists two levels of the directory
+  you ran in — "then what *is* here?" is the next question either way.
+
+Things worth knowing:
+
+- **Ranking and streaming pull against each other.** A rank needs the whole
+  result set, which is the one thing this refuses to wait for. So the tabs are
+  chosen after a **150 ms grace window** (`GRACE_MS`) over whatever has
+  arrived, not from the raw arrival order (which in a deep tree is whichever
+  directory fd walked into first — `init.lua` at the root losing to ten files
+  four levels down) and not from the finished search. A small tree finishes
+  inside the window and gets its true top ten. The *listing* is always ranked,
+  and re-ranks as it grows.
+- The order is exact basename > basename stem > prefix > substring, then the
+  shallowest path, then the shorter name. `-f` opens the top of that and
+  nothing else, stopping early on an exact basename match.
+- fd (`fdfind`) matches the basename by default and its pattern is an
+  unanchored regex, so a plain `api` already means `.*api.*` with no wrapping.
+  `find` is the fallback when fd is missing and needs `*pattern*` written out.
+- Hard-stopped at 2000 hits (`MAX_HITS`) — a pattern that loose is a mistake,
+  not a search — and the header says when that happened.
+- **An explicit path is a path, not a pattern.** The shell function opens an
+  argument that exists on disk, or that contains a `/`, directly — so
+  `nv src/new.lua` still creates a new file, and bare `nv` still opens netrw
+  on the current directory.
+
+`f` is the same search printed to the shell instead, and it streams: fd's
+output is read line by line and echoed as it is found (measured: first line at
+0.5 s of a 2.4 s walk), which is also why `f` cannot rank — only `f -f`, which
+has to see everything, does. It is fed by process substitution rather than a
+pipeline because zsh runs *every* stage of a pipeline in a subshell, so piping
+into the loop would print eagerly but lose the count.
+
+## tab management (`<C-f>` chord)
+
+`after/plugin/tabs.lua`. These used to hang off `<C-t>`, which was wrong:
+`<C-t>` is the *terminal* chord (`<C-t>t` / `<C-t>T` open one) and `<C-b>` is
+tmux's prefix inside it, so both belong to the terminal in the split next
+door. `<C-f>` was free, and the builtin it displaces — page forward — is
+already `<PageDown>`, `J` and `<C-d>` here.
+
+`<C-f>` `o` only (close every other tab) · `x` close · `n` new · `b` telescope
+picker · `m` move this split into its own tab (`<C-w>T`; it was `<C-t>o`,
+before `o` was needed for "only") · `s`/`v` fold the previous tab into a split
+· `<`/`>` move this tab along the tabline.
+
+**`<PageUp>`/`<PageDown>` now walk the tabline** — left and right as drawn,
+not vim's numbering-by-recency. Paging was covered three times over (`J`/`K`,
+`<C-d>`/`<C-u>`, `<leader><BS>`), so the fourth way was worth spending. `J`/`K`
+are *non-recursive* maps onto the builtins, so this never reaches them.
+`gt`/`gT` stay reversed, as `remap.lua` has them.
 
 ## git review (`:GitReview`)
 
