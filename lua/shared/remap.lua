@@ -567,15 +567,23 @@ vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
 -- still K / <leader><BS> (<PageUp> now walks the tabline).
 vim.keymap.set({ "n", "v" }, "<C-b>", "<Nop>", { desc = "(freed for tmux prefix)" })
 
--- <C-w> in a terminal: leave terminal mode and start the window command there.
--- The shell's own <C-w> (delete-word-back) is given up deliberately — switching
--- to the split next door is worth more than a key readline spells <A-BS> too,
--- and it makes <C-w>hjkl / <C-w>x mean the same thing in every window. remap is
--- on so the <C-w> maps below (and <C-w>T etc.) are reached; the map is
--- terminal-mode only, so <C-\><C-n> first means it cannot recurse into itself.
--- You are left in terminal-NORMAL mode, so <Esc> stays there and i resumes.
-vim.keymap.set("t", "<C-w>", [[<C-\><C-n><C-w>]],
-  { remap = true, desc = "Window command from terminal mode" })
+-- <C-w> in a terminal: leave terminal mode, and nothing else.
+--
+-- It is deliberately NOT `[[<C-\><C-n><C-w>]]` with remap on, which is what it
+-- was first written as and which recursed until WSL fell over. remap means the
+-- *rhs* is remapped too, and in terminal mode every one of its keys is already
+-- taken here (after/plugin/telescope.lua): <C-\> sends the tmux prefix +
+-- move-window-left, <C-n> sends prefix + new-window, and the trailing <C-w> is
+-- this map again — so one press was a loop that opened a tmux window per turn.
+-- tmux itself binds nothing to a bare C-w (prefix C-w is resurrect's save); the
+-- collision was entirely between nvim's own terminal-mode maps.
+--
+-- The other half of the lesson is why the rhs stops here rather than starting a
+-- window command: a pending <C-w> makes the *next* key a normal-mode key in a
+-- window that still looks like a shell, and <C-s> alone opens a tmux terminal
+-- in a split. So <C-w> puts you in terminal-NORMAL mode and stops. <Esc> keeps
+-- you there, i resumes --TERMINAL--, and a window command is a second <C-w>.
+vim.keymap.set("t", "<C-w>", [[<C-\><C-n>]], { desc = "Leave terminal mode (terminal-normal)" })
 
 -- close current split
 vim.keymap.set("n", "<C-w>x", "<C-w>c", { desc = "Close current split" })
