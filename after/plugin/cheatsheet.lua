@@ -161,6 +161,8 @@ local lines = {
   "                    nvim split closes the split itself, so    ",
   "                    an accidental split is undone by <C-q>    ",
   "   <C-t>            fork: new WT window at this pane's cwd     ",
+  "   <C-w>            leave terminal mode + window cmd (<C-w>h,  ",
+  "                    <C-w>x, ...); <Esc> stays in NORMAL, i back",
   "   <C-p>            yank history -> <CR> pastes into the shell",
   "   <C-e>            scrollback: full pane history as a big     ",
   "                    split above a thin terminal strip — edit, ",

@@ -567,6 +567,16 @@ vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
 -- still K / <leader><BS> (<PageUp> now walks the tabline).
 vim.keymap.set({ "n", "v" }, "<C-b>", "<Nop>", { desc = "(freed for tmux prefix)" })
 
+-- <C-w> in a terminal: leave terminal mode and start the window command there.
+-- The shell's own <C-w> (delete-word-back) is given up deliberately — switching
+-- to the split next door is worth more than a key readline spells <A-BS> too,
+-- and it makes <C-w>hjkl / <C-w>x mean the same thing in every window. remap is
+-- on so the <C-w> maps below (and <C-w>T etc.) are reached; the map is
+-- terminal-mode only, so <C-\><C-n> first means it cannot recurse into itself.
+-- You are left in terminal-NORMAL mode, so <Esc> stays there and i resumes.
+vim.keymap.set("t", "<C-w>", [[<C-\><C-n><C-w>]],
+  { remap = true, desc = "Window command from terminal mode" })
+
 -- close current split
 vim.keymap.set("n", "<C-w>x", "<C-w>c", { desc = "Close current split" })
 
