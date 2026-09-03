@@ -554,7 +554,72 @@ vim.keymap.set('t', '<C-s>', term_send('\x02%'), { desc = 'tmux: split pane (sid
 vim.keymap.set('t', '<C-n>', term_send('\x02c'), { desc = 'tmux: new window' })
 vim.keymap.set('t', '<C-h>', term_send('\x08'),  { desc = 'tmux: previous window' })
 vim.keymap.set('t', '<C-l>', term_send('\x0c'),  { desc = 'tmux: next window' })
-vim.keymap.set('t', '<C-q>', term_send('\x11'),  { desc = 'tmux: close pane' })
+-- <C-q> is "close this pane", but the last pane needs its own handling. Killing
+-- it destroys the session, and with `detach-on-destroy off` (~/.tmux.conf) the
+-- client does not exit: it switches to the most recently active *other* session.
+-- In the everyday terminal that is the point — the WT window survives. In a
+-- <C-s> / <C-t>T split it is wrong: the tmux window goes away, the nvim split
+-- stays put and now shows an unrelated shell, so the split cannot be closed by
+-- pressing <C-q> harder. So when this is the session's last pane and the nvim
+-- window it lives in is a split, close the split (killing the session with it)
+-- instead of forwarding the key.
+local function term_close_pane()
+  local session = vim.b.tmux_session
+  local last_pane = false
+  if session then
+    local out = vim.fn.system({ 'tmux', 'list-panes', '-s', '-t', session, '-F', '#{pane_id}' })
+    last_pane = vim.v.shell_error == 0 and #vim.split(vim.trim(out), '\n') == 1
+  end
+  -- "is a split" means: some other window shares this tab. This terminal's own
+  -- <C-e> scrollback does not count — it is part of this terminal, and it goes
+  -- with it.
+  local win = vim.api.nvim_get_current_win()
+  local sb = vim.b.nvt_scrollback
+  local sb_win = sb and vim.api.nvim_win_is_valid(sb.win) and sb.win or nil
+  local is_split = false
+  for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if w ~= win and w ~= sb_win then is_split = true end
+  end
+  if last_pane and is_split then
+    -- Close the nvim window ourselves rather than killing the session and
+    -- waiting for the job to end: `detach-on-destroy off` means the attached
+    -- client would survive the kill by switching sessions, so the job never
+    -- exits. Wiping the buffer is what actually ends `tmux attach` here; the
+    -- kill-session is for the now clientless session behind it.
+    local buf = vim.api.nvim_get_current_buf()
+    vim.schedule(function()
+      if sb_win then pcall(vim.api.nvim_win_close, sb_win, true) end
+      pcall(vim.api.nvim_win_close, win, true)
+      vim.fn.system({ 'tmux', 'kill-session', '-t', session })
+      pcall(vim.api.nvim_buf_delete, buf, { force = true })
+    end)
+    return
+  end
+  vim.api.nvim_chan_send(vim.b.terminal_job_id, '\x11')
+end
+vim.keymap.set('t', '<C-q>', term_close_pane, { desc = 'tmux: close pane (last one: close the nvim split)' })
+
+-- A tmux terminal whose job actually exits leaves a dead "[Process exited]"
+-- buffer behind. If it was a split, close that window and drop the buffer —
+-- undoing the split is the only thing left to do with it. The last window in a
+-- tab is left alone: that is the everyday terminal, and closing it would quit
+-- nvim out from under the WT window.
+vim.api.nvim_create_autocmd('TermClose', {
+  callback = function(ev)
+    if not vim.b[ev.buf].tmux_session then return end
+    vim.schedule(function()
+      for _, w in ipairs(vim.fn.win_findbuf(ev.buf)) do
+        if #vim.api.nvim_tabpage_list_wins(vim.api.nvim_win_get_tabpage(w)) > 1 then
+          pcall(vim.api.nvim_win_close, w, true)
+        end
+      end
+      if #vim.fn.win_findbuf(ev.buf) == 0 then
+        pcall(vim.api.nvim_buf_delete, ev.buf, { force = true })
+      end
+    end)
+  end,
+  desc = 'Close the split left behind by a finished tmux terminal',
+})
 -- <C-]>/<C-\>: move the current tmux window one index left/right (prefix + </>).
 -- Ctrl+[ is not available: it *is* Escape (0x1b), so mapping it here would
 -- swallow <Esc> for tmux copy-mode and every program inside the pane.
