@@ -698,52 +698,6 @@ end, { desc = 'Forward <C-o> to terminal' })
 --                    buffers. Acceptable tradeoff.
 vim.keymap.set('t', '<C-e>', open_tmux_scrollback, { desc = 'Terminal scrollback (tmux) / exit terminal mode' })
 
--- <C-p>: yank history picker (overrides nvim default <C-p> = move up / prev completion)
--- Works in normal, insert and terminal mode.
--- Normal/insert: pastes selected text at cursor; re-enters insert if triggered from it.
--- Terminal: pastes the selected text into the shell (tmux/readline), then resumes insert.
-vim.keymap.set('t', '<C-p>', function()
-  local job = vim.b.terminal_job_id
-  require('telescope').extensions.neoclip.default({
-    attach_mappings = function(_, map)
-      local actions = require('telescope.actions')
-      local state   = require('telescope.actions.state')
-      local function on_select(bufnr)
-        local entry = state.get_selected_entry()
-        actions.close(bufnr)
-        if entry then vim.api.nvim_chan_send(job, table.concat(entry.contents, '\n')) end
-        vim.cmd('startinsert')
-      end
-      map('i', '<CR>', on_select)
-      map('n', '<CR>', on_select)
-      return true
-    end,
-  })
-end, { desc = 'Yank history picker → paste into shell' })
-
-vim.keymap.set({ 'n', 'i' }, '<C-p>', function()
-  local was_insert = vim.api.nvim_get_mode().mode == 'i'
-
-  local opts = {
-    attach_mappings = function(_, map)
-      local actions = require('telescope.actions')
-      local state   = require('telescope.actions.state')
-      local function on_select(bufnr)
-        local entry = state.get_selected_entry()
-        actions.close(bufnr)
-        if not entry then return end
-
-        local regtype = entry.regtype == 'V' and 'l' or 'c'
-        vim.api.nvim_put(entry.contents, regtype, true, true)
-        if was_insert then
-          vim.api.nvim_feedkeys('a', 'n', false)
-        end
-      end
-      map('i', '<CR>', on_select)
-      map('n', '<CR>', on_select)
-      return true
-    end
-  }
-
-  require('telescope').extensions.neoclip.default(opts)
-end, { desc = 'Yank history picker' })
+-- <C-p> (yank history) lives in after/plugin/yanks.lua now -- it opens the
+-- :Yanks buffer in every mode, the telescope picker that used to be here is
+-- gone, and so is neoclip.

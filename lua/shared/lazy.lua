@@ -128,37 +128,11 @@ require("lazy").setup({
         end,
     },
 
-    -- sqlite backend (used by neoclip for persistent yank history)
-    { 'kkharji/sqlite.lua' },
-
-    -- yank history picker (telescope extension)
-    {
-        'AckslD/nvim-neoclip.lua',
-        dependencies = { 'nvim-lua/plenary.nvim', 'kkharji/sqlite.lua' },
-        config = function()
-            require('neoclip').setup({
-                -- Persist yank history to SQLite so it survives restarts.
-                enable_persistent_history = true,
-                db_path = vim.fn.stdpath('data') .. '/neoclip.sqlite3',
-                -- One global history across every *concurrently running* nvim:
-                -- the outer terminal nvim, an inner nvim in a tmux pane, another
-                -- window entirely. Without this the db is read once at startup
-                -- and written once on VimLeavePre, so two nvims open at the same
-                -- time never see each other's yanks -- and whichever exits last
-                -- overwrites the table with its own view, losing the other's.
-                -- With it, the picker pulls before it opens and every yank pushes.
-                --
-                -- The cost is that a push is a delete-all + reinsert-all of the
-                -- whole table, on every yank. Hence `history` well below the
-                -- default 1000: that is the number of rows rewritten per `yy`.
-                continuous_sync = true,
-                -- The cap on the history, in memory and in the db alike.
-                -- (`db_max_entries`, which this used to set, is not a neoclip
-                -- setting at all -- unknown keys are accepted and ignored.)
-                history = 200,
-            })
-        end,
-    },
+    -- The yank history is not a plugin: it is lua/shared/yank_store.lua, a
+    -- file-backed log, read and written by after/plugin/yanks.lua (:Yanks).
+    -- neoclip + sqlite.lua used to live here and were removed -- neoclip's
+    -- `continuous_sync` rewrites the entire sqlite table on every yank, and
+    -- every `dd` is a yank, so editing was paying for the history.
 
     -- document structure sidebar (classes, functions, etc.)
     {

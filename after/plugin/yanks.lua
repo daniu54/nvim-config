@@ -1,34 +1,36 @@
--- :Yanks — the whole yank history as an ordinary buffer.
+-- :Yanks -- the whole yank history as an ordinary buffer, and the only way in.
 --
--- The sibling of the <C-p> telescope picker (after/plugin/telescope.lua), over
--- exactly the same store: neoclip's sqlite-backed history, which with
--- `continuous_sync` (lua/shared/lazy.lua) is one global history shared live by
--- every running nvim — the outer terminal nvim, an inner nvim in a tmux pane,
--- another window entirely.
+-- Over `lua/shared/yank_store.lua`: a file-backed log every running nvim
+-- appends to and re-reads, so this is one global history -- the outer terminal
+-- nvim, an inner nvim in a tmux pane, another window entirely.
 --
--- The picker is for "I know roughly what I want, let me fuzzy-find it". This is
--- for the other half: reading the history, comparing two entries, taking three
--- lines out of the middle of one. It is a real buffer, so `/`, visual mode, `yy`
--- and every other motion work on it — which is the entire point, and why it is
--- rendered as the entries' text verbatim with headers in between rather than as
--- one-line summaries.
+-- It is a real buffer, so `/`, visual mode, `yy` and every other motion work on
+-- it -- which is the entire point, and why it is rendered as the entries' text
+-- verbatim with headers in between rather than as one-line summaries. Reading
+-- the history, comparing two entries and taking three lines out of the middle
+-- of one all work here and in a fuzzy-finder do not; that is why the telescope
+-- picker this used to have alongside it is gone, and <C-p> opens this instead.
 --
 -- Opened with :Yanks, or :Yanks! for a vsplit on the right instead of a split
 -- below (a history of long lines reads better in a tall narrow window).
 
-local ok_storage, storage = pcall(require, 'neoclip.storage')
-if not ok_storage then return end
+local store = require('shared.yank_store')
 
 local ns = vim.api.nvim_create_namespace('yanks')
 
 -- The one buffer, reused. A second :Yanks refreshes it rather than stacking up
 -- windows onto stale copies of a history that changes under them.
-local state = { buf = nil, origin = nil, entries = {} }
+--
+-- `origin` is the window :Yanks was called from -- what <CR> pastes into. Its
+-- mode is remembered too, because pasting back into it has to end where the
+-- key was pressed: a terminal wants the text written to the shell's stdin and
+-- insert mode resumed, an insert-mode paste wants insert mode back.
+local state = { buf = nil, origin = nil, job = nil, insert = false, entries = {} }
 
 local REGTYPE = { c = 'charwise', l = 'linewise', b = 'blockwise' }
 
 local function render()
-    local yanks = storage.get().yanks -- most recent first; pulls from the db
+    local yanks = store.get() -- most recent first; re-read if the file changed
     local lines, marks, index = {}, {}, {}
 
     if #yanks == 0 then
@@ -76,14 +78,38 @@ end
 
 -- Leave the list and act on the window :Yanks was called from. That window may
 -- be gone (closed while the list was open), in which case there is nothing to
--- paste into and the entry is left in the register.
-local function with_origin(fn)
+-- paste into and the caller's fallback runs instead.
+local function with_origin(fn, fallback)
     local win = state.origin
     vim.cmd('close')
     if win and vim.api.nvim_win_is_valid(win) then
         vim.api.nvim_set_current_win(win)
         fn()
+    elseif fallback then
+        fallback()
     end
+end
+
+-- <CR> and p/P all end here. The unnamed register is loaded first with the
+-- entry's own regtype, so the paste behaves like the original yank did (a
+-- linewise entry lands on its own lines) and a following `p` repeats it.
+local function paste(entry, after)
+    vim.fn.setreg('"', entry.contents, entry.regtype)
+    local job, insert = state.job, state.insert
+    with_origin(function()
+        if job then
+            -- A terminal: text goes to the shell's stdin, not into the buffer.
+            vim.api.nvim_chan_send(job, table.concat(entry.contents, '\n'))
+            -- Scheduled: the window switch this is inside of has to land first,
+            -- or the mode is set on the window we are leaving.
+            vim.schedule(function() vim.cmd('startinsert') end)
+        else
+            vim.api.nvim_put(entry.contents, entry.regtype, after, true)
+            if insert then vim.api.nvim_feedkeys('a', 'n', false) end
+        end
+    end, function()
+        vim.notify(('Yanks: %d line(s) in the unnamed register'):format(#entry.contents))
+    end)
 end
 
 local function setup_buf(buf)
@@ -99,35 +125,24 @@ local function setup_buf(buf)
 
     map('q', '<cmd>close<CR>', 'Yanks: close')
 
-    -- <CR>: load the entry into the unnamed register with its own regtype, so
-    -- the `p` that follows behaves like the original yank did (a linewise entry
-    -- pastes on its own lines).
-    map('<CR>', function()
-        local entry = entry_at_cursor()
-        if not entry then return end
-        vim.fn.setreg('"', entry.contents, entry.regtype)
-        vim.cmd('close')
-        vim.notify(('Yanks: %d line(s) in the unnamed register'):format(#entry.contents))
-    end, 'Yanks: entry -> unnamed register, close')
+    local function pick(after)
+        return function()
+            local entry = entry_at_cursor()
+            if not entry then return end
+            paste(entry, after)
+        end
+    end
 
-    map('p', function()
-        local entry = entry_at_cursor()
-        if not entry then return end
-        with_origin(function() vim.api.nvim_put(entry.contents, entry.regtype, true, true) end)
-    end, 'Yanks: paste entry after cursor in the origin window')
-
-    map('P', function()
-        local entry = entry_at_cursor()
-        if not entry then return end
-        with_origin(function() vim.api.nvim_put(entry.contents, entry.regtype, false, true) end)
-    end, 'Yanks: paste entry before cursor in the origin window')
+    map('<CR>', pick(true), 'Yanks: paste entry into the origin window, close')
+    map('p', pick(true), 'Yanks: paste entry after cursor in the origin window')
+    map('P', pick(false), 'Yanks: paste entry before cursor in the origin window')
 
     -- Deletes from the shared store, so it is gone from every nvim.
     map('d', function()
         local entry = entry_at_cursor()
         if not entry then return end
         local row = vim.api.nvim_win_get_cursor(0)[1]
-        storage.delete('yanks', entry)
+        store.delete(entry)
         render()
         pcall(vim.api.nvim_win_set_cursor, 0, { math.min(row, vim.api.nvim_buf_line_count(0)), 0 })
     end, 'Yanks: delete entry from the history')
@@ -135,8 +150,13 @@ local function setup_buf(buf)
     map('R', render, 'Yanks: refresh')
 end
 
-local function open(vertical)
+--- opts: vertical (vsplit), insert (return to insert mode after pasting),
+--- job (a terminal's channel: paste writes to the shell instead of the buffer).
+local function open(opts)
+    opts = opts or {}
     state.origin = vim.api.nvim_get_current_win()
+    state.insert = opts.insert or false
+    state.job = opts.job
 
     if not (state.buf and vim.api.nvim_buf_is_valid(state.buf)) then
         state.buf = vim.api.nvim_create_buf(false, true)
@@ -153,7 +173,7 @@ local function open(vertical)
         end
     end
 
-    vim.cmd(vertical and 'botright vsplit' or 'botright split')
+    vim.cmd(opts.vertical and 'botright vsplit' or 'botright split')
     vim.api.nvim_win_set_buf(0, state.buf)
     vim.wo.number = false
     vim.wo.relativenumber = false
@@ -162,7 +182,7 @@ local function open(vertical)
 
     render()
 
-    if not vertical then
+    if not opts.vertical then
         vim.api.nvim_win_set_height(0, math.min(20, math.max(10, vim.api.nvim_buf_line_count(0) + 1)))
     end
     -- Land on the newest entry's first line, not on its header.
@@ -170,5 +190,23 @@ local function open(vertical)
 end
 
 vim.api.nvim_create_user_command('Yanks', function(opts)
-    open(opts.bang)
+    open({ vertical = opts.bang })
 end, { bang = true, desc = 'Yank history as a buffer (! = vsplit)' })
+
+-- <C-p> is the key for this, in normal, insert and terminal mode (it overrides
+-- nvim's builtin <C-p> = move up / previous completion). It used to open a
+-- telescope picker over the same history; the buffer won.
+vim.keymap.set({ 'n', 'i' }, '<C-p>', function()
+    local insert = vim.api.nvim_get_mode().mode:sub(1, 1) == 'i'
+    if insert then vim.cmd('stopinsert') end
+    -- From insert mode, let stopinsert land before the split opens.
+    vim.schedule(function() open({ insert = insert }) end)
+end, { desc = 'Yank history (:Yanks)' })
+
+vim.keymap.set('t', '<C-p>', function()
+    local job = vim.b.terminal_job_id
+    -- Out of terminal mode first, the same way <C-e> (scrollback) does it:
+    -- a window opened from inside terminal mode leaves the mode behind.
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-\\><C-n>', true, false, true), 'n', false)
+    vim.schedule(function() open({ job = job }) end)
+end, { desc = 'Yank history (:Yanks) → paste into the shell' })

@@ -26,6 +26,7 @@ excalidraw-style.md         — its key reference
 lua/shared/
   init.lua                  — loads remap, set, packer, wt_colors
   md_document.lua           — markdown → typed blocks + treesitter code tokens
+  yank_store.lua            — the yank history: an append-only JSON-lines log
   excalidraw_style.lua      — loads excalidraw-style.json
   lazy.lua                  — plugin definitions (lazy.nvim)
   remap.lua                 — keymaps
@@ -34,7 +35,7 @@ lua/shared/
   copilot.lua               — shared Copilot infra (bootstrap, sensitive-file check, opt-in helper, <Right>/<S-Right>)
 after/plugin/
   autosave.lua              — autosave file-backed buffers (:AutoSaveToggle)
-  yanks.lua                 — :Yanks, the yank history as a buffer
+  yanks.lua                 — :Yanks / <C-p>, the yank history as a buffer
   git_review.lua            — :GitReview, the branch's commits+diffs as markdown
   markdown_convert.lua      — :ConvertToPdf/:ConvertToTex/:ConvertToWord via mdpdf
   markdown_excalidraw.lua   — :ExportToExcalidraw (whole document → canvas)
@@ -277,40 +278,51 @@ all-bullets; only an all-bullet run is stripped.
 terminals (Windows Terminal included) send a plain `<BS>` for these, so they may
 never fire. `<leader><BS>` stays the reliable page-up.
 
-## yank history (`<C-p>` picker + `:Yanks` buffer)
+## yank history (`<C-p>` / `:Yanks`)
 
-There is **one** yank history, and it is global: every yank in every nvim goes
-into a sqlite store (`~/.local/share/nvim/neoclip.sqlite3`, neoclip, configured
-in `lua/shared/lazy.lua`), and every nvim reads that same store. Two ways in:
+There is **one** yank history, it is global, and it is capped at the **last 15
+entries**: every yank in every nvim — and every `dd`, `x` and `cw`, they are all
+yanks — is appended to `~/.local/share/nvim/yanks.jsonl`, and every nvim reads
+that same file. One way in, in normal, insert *and* terminal mode:
 
-- **`<C-p>`** (`after/plugin/telescope.lua`) — the telescope picker, in normal,
-  insert *and* terminal mode. Fuzzy-find an entry and it is put at the cursor;
-  in a terminal it is written into the shell's stdin instead.
-- **`:Yanks`** (`after/plugin/yanks.lua`) — the same history as an ordinary
-  buffer in a split below (`:Yanks!` for a vsplit on the right). `<CR>` loads the
-  entry under the cursor into the unnamed register and closes; `p`/`P` paste it
-  into the window `:Yanks` was called from; `d` deletes it from the history
-  (everywhere — it is the shared store); `R` refreshes; `q` closes.
+- **`<C-p>`**, or **`:Yanks`** (`after/plugin/yanks.lua`) — the history as an
+  ordinary buffer in a split below (`:Yanks!` for a vsplit on the right). `<CR>`
+  pastes the entry under the cursor back into the window you came from and
+  closes: at the cursor in a buffer, into the shell's stdin in a terminal, with
+  insert mode resumed if that is where you pressed the key. `p`/`P` do the same
+  after/before the cursor, `d` deletes the entry from the history (everywhere —
+  it is the shared store), `R` refreshes, `q` closes. The unnamed register is
+  loaded too, so a following `p` repeats the paste.
 
-The picker is for "I know what I want, find it". The buffer is for reading the
-history, comparing two entries, or taking three lines out of the middle of one:
-it renders the entries' text **verbatim** with headers in between, precisely so
-that `/`, visual mode and `yy` work on it. One buffer, reused — a second
-`:Yanks` refreshes it rather than opening another window onto a stale copy.
+The buffer is for reading the history, comparing two entries, or taking three
+lines out of the middle of one: it renders the entries' text **verbatim** with
+headers in between, precisely so that `/`, visual mode and `yy` work on it. One
+buffer, reused — a second `:Yanks` refreshes it rather than opening another
+window onto a stale copy. There used to be a telescope picker over the same
+history on `<C-p>`; the buffer won, and it was removed along with neoclip.
 
-**`continuous_sync = true` is what makes "global" true of *concurrently
-running* instances**, and it is easy to assume without it. Persistence alone
-(`enable_persistent_history`) reads the db once at startup and writes it once on
-`VimLeavePre`, so an outer terminal nvim and an inner nvim in a tmux pane never
-see each other's yanks — and whichever exits last overwrites the table with its
-own view, silently dropping the other's. With continuous sync the picker pulls
-before it opens and every yank pushes.
+**The store is `lua/shared/yank_store.lua`, and it is an append-only JSON-lines
+log** — no plugin, no sqlite. That shape is the whole design, and it comes from
+what replaced it: neoclip's store is a sqlite table, and `continuous_sync` (what
+made its history global across *concurrently running* nvims, rather than a db
+read once at startup and written once on `VimLeavePre`) pushes by *deleting and
+reinserting the entire table on every yank*. At the 200-entry history it ran,
+that is 200 rows rewritten through a C extension before the cursor moves, and it
+was felt as lag while editing.
 
-The cost is real: neoclip's push is a *delete-all + reinsert-all* of the whole
-table, run on every yank. `history` is therefore set to **200**, well below the
-default 1000 — that number is the count of rows rewritten per `yy`. (`history`
-is also the only cap that exists. `db_max_entries`, which this config used to
-set, is not a neoclip setting at all; unknown keys are accepted and ignored.)
+- **Recording is one `open(O_APPEND)` + one `write` + one `close`** of a few
+  hundred bytes — the cost does not grow with the history. Measured at ~0.03 ms.
+- **Reading** parses the file backwards, keeping the newest 15 and skipping
+  duplicates (so re-yanking an old entry moves it to the front). Reads happen
+  when `:Yanks` opens, not while editing, and the result is cached against the
+  file's size+mtime — which is also what makes another nvim's writes show up.
+- **Compaction** rewrites the log down to those 15 entries once it passes
+  128 KiB, via a temp file and `rename`. The rename is atomic, so a reader never
+  sees half a history; entries another nvim appended between the read and the
+  rename are lost, which is the one race here and is worth the simplicity.
+- One entry per line is also why a **truncated last line** (a crash mid-write)
+  is skipped rather than poisoning the file. A single yank over 1 MiB is not
+  recorded: 15 of those would be the store.
 
 ## git review (`:GitReview`)
 
