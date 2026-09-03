@@ -236,22 +236,36 @@ vim.api.nvim_create_autocmd("FileType", {
   end,
 })
 
+-- <CR>: open the path or URL under the cursor.
+--   url         -> Firefox (Windows side)
+--   text file   -> nvim, in a tab (focused if it is already open somewhere)
+--   directory   -> netrw, in a tab
+--   other file  -> Windows Explorer, with the file selected in its folder
+--
+-- Complements `gf` rather than replacing it: `gf` opens in place, <CR> opens a
+-- tab, so following a path never costs you the window you were reading.
+-- Works in terminal buffers' normal mode too, where relative paths resolve
+-- against the *shell's* cwd. See lua/shared/open_under_cursor.lua.
+--
+-- Falls through to the builtin <CR> when there is nothing under the cursor, and
+-- stays out of buffers where <CR> already means something (quickfix, prompt);
+-- buffer-local <CR> maps (netrw, :Yanks, :GitReview, nvfuzzy, markdown tables,
+-- cmp) shadow this one on their own.
+vim.keymap.set("n", "<CR>", function()
+  local cr = vim.api.nvim_replace_termcodes("<CR>", true, false, true)
+  local bt = vim.bo.buftype
+  if bt == "quickfix" or bt == "prompt" then
+    vim.api.nvim_feedkeys(cr, "n", false)
+    return
+  end
+  if not require("shared.open_under_cursor").open_under_cursor({ silent = true }) then
+    vim.api.nvim_feedkeys(cr, "n", false)
+  end
+end, { desc = "Open path/URL under cursor" })
+
 -- open URL under cursor in Firefox (WSL → Windows via PowerShell)
 vim.keymap.set("n", "gx", function()
-  local line = vim.fn.getline(".")
-  local col = vim.fn.col(".") - 1  -- 0-indexed
-  local url_pat = "https?://[%w%.%-%_~:/?#%[%]@!$&'%(%)%*%+,;=%%]+"
-  local s = 1
-  while true do
-    local ms, me = line:find(url_pat, s)
-    if not ms then break end
-    if ms - 1 <= col and col <= me - 1 then
-      vim.fn.jobstart({ vim.fn.expand("~/bin/open-url"), line:sub(ms, me) })
-      return
-    end
-    s = me + 1
-  end
-  vim.notify("No URL under cursor", vim.log.levels.WARN)
+  require("shared.open_under_cursor").open_under_cursor({ url_only = true })
 end, { desc = "Open URL under cursor" })
 
 -- open path under cursor in a new nvim window (WSL → Windows Terminal)

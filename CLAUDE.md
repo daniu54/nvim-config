@@ -368,16 +368,26 @@ multi-line paste. A program that never asked for it (`cat`) still gets raw text.
 `~/dotfiles/zshrc.nv` (`nv`, `nvf`, `f`; `nv --help`). Nothing is searched
 before nvim starts — that ordering is the whole command. The pattern arrives
 in `NVFUZZY_PATTERN` / `NVFUZZY_TOP` / `NVFUZZY_FIRST` / `NVFUZZY_DIRS` and
-the walk runs as a job, matching `.*pattern.*` against **file names**,
-case-insensitively, 50 levels down (`-t`: 1 level), hidden files included,
-`.git` and gitignored paths out.
+the walk runs as a job, matching **file names**, case-insensitively, 50
+levels down (`-t`: 1 level), hidden files included, `.git` and gitignored
+paths out.
+
+**The pattern is a subsequence, not a substring**: its characters have to
+appear in order but not together, so `nv evenapi` finds
+`LinkedInEventsApi.kt`. It is expanded to a regex (`e.*v.*e.*n.*a.*p.*i`) and
+run by fd's own engine rather than filtered afterwards in Lua. Only a plain
+pattern is expanded — anything containing a character that is not a letter,
+digit, `_`, `.` or `-` goes to fd verbatim, which is the escape hatch when you
+want a real regex.
 
 What arrives is split in two, and the split is the point:
 
 - **The best 5 hits become tabs 1–5**, left of the results tab, and **only the
   first one takes the cursor** — everything after it lands behind you. A
   search hit yanking you out of the file you are reading is what this avoids;
-  landing on the best hit is what you asked for.
+  landing on the best hit is what you asked for. The set is *settled* when the
+  search ends (see below), because until then there is no such thing as "the
+  best five".
 - **Every hit is listed in a results buffer**, which is always the **last**
   tab: plain paths, an ordinary scratch buffer. Same argument as `:Yanks` and
   `:GitReview` — `/`, `n`, visual mode, `yy`, `gf` and marks all work because
@@ -411,17 +421,45 @@ until every shallower band has *exited*. What reaches you is breadth-first.
   let out**, since by definition it is all in hand at once. The *listing* is
   always fully ranked and re-ranks as it grows.
 
+**Banding cannot do the whole job**, and `settle_tabs` is the other half. Depth
+is all a band knows: it cannot separate ten hits that all sit at depth 8, and a
+subsequence loose enough to find `LinkedInEventsApi.kt` from `evenapi` also
+drags in files that match by accident. So the tabs that go up during the search
+are the first five *released*, not the best five — and when the search ends the
+set settles onto the real ranking: better hits are opened, the tabs they
+displace are closed, the tabline is sorted best-first, and if you are still on
+the tab `nv` dropped you on (so you were waiting for it) you are moved to the
+best hit. **The tab you are in is never closed**, nor is one whose buffer you
+have edited, so the set can end up one or two over the limit — that is the
+right way to be wrong. Having navigated anywhere at all is enough to be left
+alone entirely.
+
+Note that this is also why `open_hit_tab` does **not** use
+`tab_utils.focus_if_open` the way telescope and netrw do: that helper jumps to
+the tab it finds, which is right when a keypress asked for the file and wrong
+for a background hit — it was the one remaining way a search result could yank
+you out of what you were reading.
+
 Things worth knowing:
 
-- The rank is exact basename > basename stem > prefix > substring, then the
-  shallowest path, then the shorter name. `-f` opens the top of that and
+- The rank is a tier for *how* it matched — exact basename > stem > prefix >
+  contiguous substring > subsequence — then how **tightly** (the span of the
+  tightest run of the name containing the pattern; a contiguous match spans
+  exactly the pattern's length), then the shallowest path, then the shorter
+  name. The tightening is greedy forward to find where the match can end, then
+  greedy backward from there for the latest start, so `evenapi` scores against
+  the `eventsApi` at the end of `LinkedInEventsApi.kt` and not the `e` back in
+  "Linked". **The same score is implemented in awk in `~/dotfiles/zshrc.nv`**
+  for `f -f`; the two must agree, since `f -f api` and `nv -f api` should open
+  the same file. `-f` opens the top of that and
   nothing else, stopping at the first *released* hit — which is from the
   shallowest band with anything in it, so it does not wait out a 50-level
   walk.
 - fd (`fdfind`) matches the basename by default and its pattern is an
   unanchored regex, so a plain `api` already means `.*api.*` with no wrapping.
-  `find` is the fallback when fd is missing and needs `*pattern*` written out;
-  both take `--min-depth`/`-mindepth`, which is what makes the banding work.
+  `find` is the fallback when fd is missing; `-iname` is a glob, so the same
+  subsequence falls out of `*e*v*e*n*a*p*i*`. Both take
+  `--min-depth`/`-mindepth`, which is what makes the banding work.
 - Hard-stopped at 2000 hits (`MAX_HITS`) — a pattern that loose is a mistake,
   not a search — and the header says when that happened.
 - **An explicit path is a path, not a pattern.** The shell function opens an

@@ -6,12 +6,16 @@
 -- ordering is the whole point of the command: `nv api` in a big tree should
 -- feel like opening nvim, not like waiting for find(1).
 --
+-- The pattern is a **subsequence** of the file name: `nv evenapi` finds
+-- LinkedInEventsApi.kt. See to_regex below.
+--
 -- What arrives is split in two:
 --
 --   * the first MAX_TABS hits open as tabs, left of the results tab, and only
 --     the *first* one takes the cursor — everything after it lands behind you.
 --     A search hit yanking you out of the file you are reading is the thing
---     this avoids.
+--     this avoids. When the search ends the tab set settles onto the real
+--     best MAX_TABS, sorted best-first (see settle_tabs).
 --   * everything else is listed in the results buffer, which is an ordinary
 --     scratch buffer of plain paths — the same argument as `:Yanks` and
 --     `:GitReview`: /, n, visual mode, yy, gf and marks all work because it
@@ -63,9 +67,31 @@ local function fd_bin()
   return nil
 end
 
--- fd matches the *basename* by default (no --full-path), which is what
--- "matching file names" means here, and its pattern is an unanchored regex —
--- so a plain `api` already behaves as `.*api.*` with no wrapping needed.
+-- The pattern is a **subsequence** of the file name, not a substring: the
+-- characters have to appear in order, but not together. `evenapi` finds
+-- LinkedInEventsApi.kt. fd matches the *basename* by default (no
+-- --full-path), which is what "matching file names" means here, and its
+-- pattern is an unanchored regex — so this is just `e.*v.*e.*n.*a.*p.*i`, run
+-- by fd's own engine rather than filtered afterwards in Lua.
+--
+-- Only a plain pattern is expanded. Anything with a character that is not a
+-- letter, digit, `_`, `.` or `-` is handed to fd verbatim, which is the escape
+-- hatch when you actually want to write a regex.
+local function to_regex(pat)
+  if not pat:match("^[%w_.%-]+$") then return pat end
+  local parts = {}
+  for ch in pat:gmatch(".") do
+    parts[#parts + 1] = ch:match("[%w_]") and ch or ("\\" .. ch)
+  end
+  return table.concat(parts, ".*")
+end
+
+-- The same thing as a glob, for the find(1) fallback: `*e*v*e*n*a*p*i*`.
+local function to_glob(pat)
+  if not pat:match("^[%w_.%-]+$") then return "*" .. pat .. "*" end
+  return "*" .. pat:gsub(".", "%0*")
+end
+
 local function search_cmd(opts, lo, hi)
   local bin = fd_bin()
   if bin then
@@ -74,35 +100,69 @@ local function search_cmd(opts, lo, hi)
       "--type", opts.dirs and "d" or "f",
       "--min-depth", tostring(lo), "--max-depth", tostring(hi),
       "--ignore-case", "--color", "never",
-      "--", opts.pattern, ".",
+      "--", to_regex(opts.pattern), ".",
     }
   end
-  -- No fd: find(1) always exists. -iname is a glob, not a regex, so the
-  -- substring wrapping that fd got for free has to be written out.
+  -- No fd: find(1) always exists. -iname is a glob, so the same subsequence
+  -- falls out of putting a `*` between every character.
   return {
     "find", ".", "-mindepth", tostring(lo), "-maxdepth", tostring(hi),
     "-not", "-path", "*/.git/*",
     "-type", opts.dirs and "d" or "f",
-    "-iname", "*" .. opts.pattern .. "*",
+    "-iname", to_glob(opts.pattern),
   }
 end
 
--- Rank a hit against the pattern: an exact basename beats a stem beats a
--- prefix beats a substring, and among equals the shallower path wins. Matched
--- literally on purpose — a pattern carrying regex metacharacters scores flat
--- and falls through to the depth tie-break, which is still a sane order.
+-- The tightest run of `s` that contains `p` as a subsequence, as (first, last),
+-- or nil. Greedy forward to find where the match can end, then greedy backward
+-- from there to find the latest place it can start — so `evenapi` scores
+-- against the `eventsApi` at the end of LinkedInEventsApi.kt rather than the
+-- `e` back in "Linked".
+local function subseq_span(s, p)
+  local si, pi, last = 1, 1, nil
+  while si <= #s and pi <= #p do
+    if s:sub(si, si) == p:sub(pi, pi) then pi = pi + 1; last = si end
+    si = si + 1
+  end
+  if pi <= #p then return nil end
+
+  local sj, pj, first = last, #p, nil
+  while sj >= 1 and pj >= 1 do
+    if s:sub(sj, sj) == p:sub(pj, pj) then pj = pj - 1; first = sj end
+    sj = sj - 1
+  end
+  return first, last
+end
+
+-- Rank a hit against the pattern. A tier for *how* it matched, then how
+-- tightly (a contiguous match spans exactly #pattern, a loose subsequence
+-- spans more), then the shallower path, then the shorter name. Matched
+-- lowercased and literally on purpose — a pattern carrying regex
+-- metacharacters was passed to fd verbatim, so it scores at the floor tier and
+-- falls through to the depth tie-break, which is still a sane order.
+--
+-- Kept in step with the awk copy in ~/dotfiles/zshrc.nv, which `f -f` uses:
+-- `f -f api` and `nv -f api` must open the same file.
 local function score(path, pat)
   local base = path:match("[^/]+$") or path
   local lb, lp = base:lower(), pat:lower()
   local stem = lb:gsub("%.[^.]*$", "")
-  local s
-  if lb == lp then s = 100
-  elseif stem == lp then s = 90
-  elseif lb:sub(1, #lp) == lp then s = 70
-  elseif lb:find(lp, 1, true) then s = 50
-  else s = 30 end
+
+  local tier, span
+  if lb == lp then tier, span = 6, #lp
+  elseif stem == lp then tier, span = 5, #lp
+  elseif lb:sub(1, #lp) == lp then tier, span = 4, #lp
+  elseif lb:find(lp, 1, true) then tier, span = 3, #lp
+  else
+    local a, b = subseq_span(lb, lp)
+    if a then tier, span = 2, b - a + 1 else tier, span = 1, #lb end
+  end
+
   local depth = select(2, path:gsub("/", ""))
-  return s * 10000 - depth * 100 - math.min(#base, 99)
+  return tier * 1e10
+    + (999 - math.min(span, 999)) * 1e6
+    + (99  - math.min(depth, 99)) * 1e4
+    + (999 - math.min(#base, 999))
 end
 
 local function by_rank(a, b)
@@ -197,13 +257,28 @@ local function results_tabnr()
   return vim.fn.tabpagenr("$")
 end
 
--- Open `path` in a tab immediately left of the results tab, keeping the
--- results tab last. Unless `focus`, the cursor goes back where it was —
+-- Put `path` on screen as a tab immediately left of the results tab, keeping
+-- the results tab last. Unless `focus`, the cursor goes back where it was —
 -- tabpage *and* window, since the results tab can be split and landing in the
 -- wrong window of the right tab is as disruptive as landing in the wrong tab.
--- Returns true if a tab was actually opened.
+--
+-- A path that is already open in some tab counts as done and is left exactly
+-- where it is. Note this deliberately does *not* go through
+-- tab_utils.focus_if_open, the way telescope and netrw do: that helper jumps
+-- to the tab it finds, which is right when a keypress asked for the file and
+-- wrong for a background hit — it would be the one way a search result could
+-- still yank you out of what you were reading.
+--
+-- Returns true if the path ended up on screen.
 local function open_hit_tab(path, focus)
-  if tab_utils.focus_if_open(path) then return false end
+  local tab, win = tab_utils.find_tab_with_file(path)
+  if tab then
+    if focus then
+      vim.api.nvim_set_current_tabpage(tab)
+      if win and vim.api.nvim_win_is_valid(win) then vim.api.nvim_set_current_win(win) end
+    end
+    return true
+  end
 
   local cur_tab = vim.api.nvim_get_current_tabpage()
   local cur_win = vim.api.nvim_get_current_win()
@@ -225,6 +300,74 @@ local function open_hit_tab(path, focus)
     return false
   end
   return true
+end
+
+-- Settle the tabs onto the real top MAX_TABS once the search is over.
+--
+-- Banding orders hits by *depth*, which is all it can do while results are
+-- still arriving: it cannot separate ten files that all sit at depth 8, and a
+-- subsequence pattern loose enough to find LinkedInEventsApi.kt from `evenapi`
+-- also drags in things that only match by accident. So the tabs that went up
+-- during the search are the first five released, not the best five — a rank
+-- needs everything, and everything only exists at the end. That is when this
+-- runs:
+--
+--   * hits that outrank an open tab get opened, and the tabs they displace are
+--     closed — a tab this command opened seconds ago and you have not looked
+--     at is not something to be precious about;
+--   * the tab you are *in* is never closed, nor is one whose buffer you have
+--     edited (the write would block on E37 anyway), so the set can end up one
+--     or two over MAX_TABS. That is the right way to be wrong;
+--   * the tabline is then sorted best-first, and if you are still sitting on
+--     the tab `nv` dropped you on — you have not paged away, so you were
+--     waiting for it — you are moved to the best hit. Having navigated
+--     anywhere at all is enough to be left alone.
+local function settle_tabs()
+  local ranked = vim.deepcopy(state.hits)
+  table.sort(ranked, by_rank)
+
+  local want, want_set = {}, {}
+  for i = 1, math.min(MAX_TABS, #ranked) do
+    want[i] = ranked[i].path
+    want_set[ranked[i].path] = true
+  end
+
+  local cur = vim.api.nvim_get_current_tabpage()
+  local follow = (cur == state.auto_tab)
+  local lazy = vim.o.lazyredraw
+  vim.o.lazyredraw = true
+
+  -- Drop the tabs that did not survive the ranking.
+  for path in pairs(state.opened) do
+    if not want_set[path] then
+      local tab, win = tab_utils.find_tab_with_file(path)
+      if tab and tab ~= cur and not vim.bo[vim.api.nvim_win_get_buf(win)].modified then
+        if pcall(vim.cmd, "tabclose " .. vim.api.nvim_tabpage_get_number(tab)) then
+          state.opened[path] = nil
+        end
+      end
+    end
+  end
+
+  -- Open the ones that earned a tab, and put everything in rank order.
+  for i, path in ipairs(want) do
+    if not state.opened[path] then
+      if open_hit_tab(path, false) then state.opened[path] = true end
+    end
+    local tab = tab_utils.find_tab_with_file(path)
+    if tab and vim.api.nvim_tabpage_get_number(tab) ~= i then
+      vim.api.nvim_set_current_tabpage(tab)
+      vim.cmd("tabmove " .. (i - 1))  -- :tabmove N puts this tab after tab N
+    end
+  end
+
+  local target = cur
+  if follow and want[1] then target = tab_utils.find_tab_with_file(want[1]) end
+  if target and vim.api.nvim_tabpage_is_valid(target) then
+    vim.api.nvim_set_current_tabpage(target)
+  end
+  vim.o.lazyredraw = lazy
+  if follow then state.auto_tab = vim.api.nvim_get_current_tabpage() end
 end
 
 -- ── the results buffer ─────────────────────────────────────────────────────
@@ -389,9 +532,13 @@ function M.rerun()
       if open_hit_tab(hit.path, focus) then
         state.opened[hit.path] = true
         tabs_opened = tabs_opened + 1
+        if focus then state.auto_tab = vim.api.nvim_get_current_tabpage() end
       end
     end,
-    M.show)
+    function(hits, truncated, done)
+      M.show(hits, truncated, done)
+      if done then settle_tabs(); M.show(hits, truncated, done) end
+    end)
 end
 
 -- -f: open the best hit and nothing else. It still runs as a job so nvim stays
