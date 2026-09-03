@@ -129,10 +129,12 @@ vim.api.nvim_create_autocmd("FileType", {
 
     -- i: toggle between the two listing styles worth having, instead of
     -- cycling all four. netrw's own `i` does (style + 1) % 4 over
-    -- thin(0) / long(1) / wide(2) / tree(3); thin and wide are just the tree
-    -- view without the tree, so this jumps straight between tree(3) — the
-    -- default from g:netrw_liststyle — and long(1), the plain directory
-    -- listing with ../ ./ and timestamps.
+    -- thin(0) / long(1) / wide(2) / tree(3), so two presses out of four land
+    -- on something nobody asked for. This jumps straight between tree(3) —
+    -- the default from g:netrw_liststyle — and thin(0), the plain
+    -- one-name-per-line listing. thin, not long(1): long is that same listing
+    -- with size, timestamp and permission columns bolted on, which is a
+    -- different question than the one `i` is for.
     --
     -- Done by presetting the window's style to one below the target and
     -- letting netrw's own NetrwListStyle do the increment + redraw, which is
@@ -142,13 +144,13 @@ vim.api.nvim_create_autocmd("FileType", {
     -- touched, so g:netrw_liststyle stays 3 and new windows still open as a
     -- tree.
     vim.keymap.set("n", "i", function()
-      local TREE, LONG, MAXLIST = 3, 1, 4
+      local TREE, THIN, MAXLIST = 3, 0, 4
       local cur = vim.w.netrw_liststyle or vim.g.netrw_liststyle
-      local target = (cur == TREE) and LONG or TREE
+      local target = (cur == TREE) and THIN or TREE
       vim.w.netrw_liststyle = (target - 1) % MAXLIST
       local islocal = vim.fn["netrw#CheckIfRemote"]() == 1 and 0 or 1
       vim.fn["netrw#Call"]("NetrwListStyle", islocal)
-    end, { buffer = true, desc = "netrw: toggle tree / long listing" })
+    end, { buffer = true, desc = "netrw: toggle tree / plain listing" })
 
     -- yp: copy full path of file under cursor to Windows clipboard
     vim.keymap.set("n", "yp", function()
@@ -554,11 +556,15 @@ vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
     callback = function() vim.bo.commentstring = "// %s" end,
 })
 
+-- <C-f>: the tab chord (after/plugin/tabs.lua). It also takes
+-- <PageUp>/<PageDown> for walking the tabline; J/K above still page, and are
+-- non-recursive maps onto the builtins, so that never reaches them.
+
 -- <C-b>: freed for tmux. tmux (running inside the nvim :terminal) uses C-b as
 -- its prefix key; nvim never intercepted <C-b> in terminal mode so the prefix
 -- already passed through, but the builtin normal-mode <C-b> (page back) is
 -- dropped here too so the key means exactly one thing everywhere. Page back is
--- still <PageUp> / <leader><BS>.
+-- still K / <leader><BS> (<PageUp> now walks the tabline).
 vim.keymap.set({ "n", "v" }, "<C-b>", "<Nop>", { desc = "(freed for tmux prefix)" })
 
 -- close current split
