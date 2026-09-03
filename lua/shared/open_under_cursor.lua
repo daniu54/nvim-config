@@ -197,16 +197,39 @@ end
 
 -- The cwd a relative path in this buffer should be read against. In a terminal
 -- that is the shell's own cwd, which is usually not nvim's.
-function M.buffer_cwd()
-  if vim.bo.buftype == "terminal" then
-    local pid = vim.b.terminal_job_pid
+--
+-- A scratch buffer showing a terminal's output -- the <C-e> tmux scrollback in
+-- after/plugin/telescope.lua -- is full of the same relative paths but is a
+-- `nofile` buffer with no job of its own, so it can point at the terminal it
+-- came from with `b:open_under_cursor_term_buf` and borrow its cwd. That is a
+-- buffer *number*, not a path, deliberately: it is resolved on every <CR>, so
+-- a `cd` in the pane after the scrollback was captured is still followed.
+-- `b:open_under_cursor_cwd` is the blunt version for anything that just knows
+-- its directory.
+function M.buffer_cwd(buf)
+  buf = buf or 0
+
+  local fixed = vim.b[buf].open_under_cursor_cwd
+  if type(fixed) == "string" and fixed ~= "" then return fixed end
+
+  local origin = vim.b[buf].open_under_cursor_term_buf
+  if type(origin) == "number" and origin ~= buf
+    and vim.api.nvim_buf_is_valid(origin)
+    and vim.bo[origin].buftype == "terminal" then
+    local cwd = M.buffer_cwd(origin)
+    if cwd then return cwd end
+  end
+
+  if vim.bo[buf].buftype == "terminal" then
+    local pid = vim.b[buf].terminal_job_pid
     if pid then
       local cwd = tmux_pane_cwd(pid) or proc_cwd(pid)
       if cwd then return cwd end
     end
   end
-  local name = vim.api.nvim_buf_get_name(0)
-  if name ~= "" and vim.bo.buftype == "" then
+
+  local name = vim.api.nvim_buf_get_name(buf)
+  if name ~= "" and vim.bo[buf].buftype == "" then
     return vim.fn.fnamemodify(name, ":h")
   end
   return vim.fn.getcwd()

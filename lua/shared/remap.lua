@@ -528,15 +528,16 @@ vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
     callback = function() vim.bo.commentstring = "// %s" end,
 })
 
--- <C-f>: the tab chord (after/plugin/tabs.lua). It also takes
--- <PageUp>/<PageDown> for walking the tabline; J/K above still page, and are
--- non-recursive maps onto the builtins, so that never reaches them.
+-- <C-f>: the tab chord (after/plugin/tabs.lua). Walking the tabline is
+-- <Home>/<End> there -- it was <PageUp>/<PageDown>, but J/K above are
+-- non-recursive maps *onto* those keys, so taking them turned J/K into a tab
+-- switch. <PageUp>/<PageDown> page again, exactly as K/J do.
 
 -- <C-b>: freed for tmux. tmux (running inside the nvim :terminal) uses C-b as
 -- its prefix key; nvim never intercepted <C-b> in terminal mode so the prefix
 -- already passed through, but the builtin normal-mode <C-b> (page back) is
 -- dropped here too so the key means exactly one thing everywhere. Page back is
--- still K / <leader><BS> (<PageUp> now walks the tabline).
+-- still K / <PageUp> / <leader><BS>.
 vim.keymap.set({ "n", "v" }, "<C-b>", "<Nop>", { desc = "(freed for tmux prefix)" })
 
 -- <C-w> in a terminal: leave terminal mode, and nothing else.

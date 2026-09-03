@@ -334,6 +334,10 @@ local function open_tmux_scrollback()
   vim.bo[buf].modified = false
   pcall(vim.api.nvim_buf_set_name, buf, ('tmux-scrollback://%s/%d'):format(session, scrollback_seq))
 
+  -- the scrollback is full of relative paths printed by the pane's shell, so
+  -- point <CR> (shared.open_under_cursor) back at the terminal they came from
+  vim.b[buf].open_under_cursor_term_buf = term_buf
+
   local function close_split()
     vim.b[term_buf].nvt_scrollback = nil
     for _, w in ipairs(vim.api.nvim_list_wins()) do

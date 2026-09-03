@@ -37,7 +37,7 @@ lua/shared/
   copilot.lua               — shared Copilot infra (bootstrap, sensitive-file check, opt-in helper, <Right>/<S-Right>)
 after/plugin/
   autosave.lua              — autosave file-backed buffers (:AutoSaveToggle)
-  tabs.lua                  — tab management: the <C-f> chord + PageUp/PageDown
+  tabs.lua                  — tab management: the <C-f> chord + Home/End
   yanks.lua                 — :Yanks / <C-p>, the yank history as a buffer
   git_review.lua            — :GitReview, the branch's commits+diffs as markdown
   markdown_convert.lua      — :ConvertToPdf/:ConvertToTex/:ConvertToWord via mdpdf
@@ -560,11 +560,13 @@ picker · `m` move this split into its own tab (`<C-w>T`; it was `<C-t>o`,
 before `o` was needed for "only") · `s`/`v` fold the previous tab into a split
 · `<`/`>` move this tab along the tabline.
 
-**`<PageUp>`/`<PageDown>` now walk the tabline** — left and right as drawn,
-not vim's numbering-by-recency. Paging was covered three times over (`J`/`K`,
-`<C-d>`/`<C-u>`, `<leader><BS>`), so the fourth way was worth spending. `J`/`K`
-are *non-recursive* maps onto the builtins, so this never reaches them.
-`gt`/`gT` stay reversed, as `remap.lua` has them.
+**`<Home>`/`<End>` walk the tabline** — left and right as drawn, not vim's
+numbering-by-recency. They were `<PageUp>`/`<PageDown>` first, and that was the
+wrong key to spend: `J`/`K` are non-recursive maps *onto* `<PageDown>`/`<PageUp>`,
+so taking those keys left the aliases pointing at a tab switch and paging with
+`J`/`K` quietly became tab-walking. `<Home>`/`<End>` displace start- and
+end-of-line, which are `0`/`^` and `$` here anyway. `gt`/`gT` stay reversed, as
+`remap.lua` has them.
 
 ## git review (`:GitReview`)
 

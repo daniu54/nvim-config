@@ -6,14 +6,15 @@
 -- free — nothing in this config used it — and the builtin it displaces is
 -- page-forward, which is already <PageDown>, J and <C-d> here.
 --
--- <PageUp>/<PageDown> move between tabs for the same reason: paging is
--- covered three times over, and "the key next to the arrow keys walks the
--- tabline" is worth more than a fourth way to scroll. J/K still page (they
--- are non-recursive maps onto the builtin, so this does not reach them).
+-- <Home>/<End> move between tabs. They were <PageUp>/<PageDown> first, which
+-- was the wrong key to spend: J/K are non-recursive maps *onto* <PageDown>/
+-- <PageUp>, so taking those keys left the aliases pointing at a tab switch
+-- and paging with J/K quietly became tab-walking. <Home>/<End> displace
+-- start-of-line and end-of-line instead, which are 0/^ and $ here anyway.
 --
 -- Direction follows the tabline, not vim's numbering-by-recency instincts:
--- <PageUp> goes left, <PageDown> goes right. gt/gT stay as remap.lua has
--- them (reversed from stock).
+-- <Home> goes left, <End> goes right. gt/gT stay as remap.lua has them
+-- (reversed from stock).
 
 local map = function(lhs, rhs, desc)
   vim.keymap.set('n', lhs, rhs, { desc = desc })
@@ -21,8 +22,8 @@ end
 
 -- ── walking the tabline ────────────────────────────────────────────────────
 
-map('<PageUp>',   function() vim.cmd('tabprevious') end, 'Previous tab (left in the tabline)')
-map('<PageDown>', function() vim.cmd('tabnext') end,     'Next tab (right in the tabline)')
+map('<Home>', function() vim.cmd('tabprevious') end, 'Previous tab (left in the tabline)')
+map('<End>',  function() vim.cmd('tabnext') end,     'Next tab (right in the tabline)')
 
 -- ── <C-f> chord ────────────────────────────────────────────────────────────
 
