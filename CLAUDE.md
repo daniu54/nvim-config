@@ -412,6 +412,17 @@ Things worth knowing:
   From that pid — or from the job pid directly, with no tmux — the walk goes
   *down* through single children, because the pane usually holds zsh → (an
   inner nvim), and it is the innermost one whose cwd you are looking at.
+- **A scratch buffer showing a terminal's output borrows that terminal's cwd.**
+  The `<C-e>` tmux scrollback is a `nofile` buffer with no job of its own, but
+  it is full of the same relative paths the pane printed, so it carries
+  `b:open_under_cursor_term_buf` pointing at the terminal it was captured from.
+  That is a buffer *number*, not a path, deliberately: it is resolved on every
+  `<CR>`, so a `cd` in the pane after the capture is still followed.
+  `b:open_under_cursor_cwd` is the blunt version for anything that simply knows
+  its directory. Note that **the terminal nvim itself is running in is the
+  wrong answer here** and cannot be used instead: that is the outer shell, whose
+  cwd is wherever nvim was launched, while the paths on screen came from the
+  tmux pane two levels further in.
 - Resolution order is the buffer's own directory, then nvim's cwd, then the
   file's directory; `~`, `$VARs`, `file://` URLs and **Windows paths**
   (`D:\obsidian_notes`, via `wslpath -u`) all resolve.
