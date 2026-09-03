@@ -98,8 +98,23 @@ local function paste(entry, after)
     local job, insert = state.job, state.insert
     with_origin(function()
         if job then
-            -- A terminal: text goes to the shell's stdin, not into the buffer.
-            vim.api.nvim_chan_send(job, table.concat(entry.contents, '\n'))
+            -- A terminal: the text goes to what is running in it, not into the
+            -- buffer. Via nvim_put rather than a raw chan_send on the channel,
+            -- because nvim_put on a terminal buffer wraps the text in
+            -- **bracketed paste** when the program on the other end asked for
+            -- it (DECSET 2004), and sends it raw when it did not.
+            --
+            -- That is not a detail. This terminal usually holds tmux, a shell
+            -- and often an *inner* nvim, and raw text arrives there as
+            -- keystrokes: pasting `class Duh()` into an inner nvim sitting in
+            -- normal mode runs `c`, `l` -- change-a-character -- and inserts
+            -- the rest, so most of the yank is gone and the buffer is damaged.
+            -- Bracketed paste is how a program is told "this is text, not
+            -- typing", and both nvim and zsh honour it (zsh also stops
+            -- executing every line but the last of a multi-line paste).
+            -- Charwise on purpose: a linewise entry must not arrive with a
+            -- trailing newline that a shell would run.
+            vim.api.nvim_put(entry.contents, 'c', false, true)
             -- Scheduled: the window switch this is inside of has to land first,
             -- or the mode is set on the window we are leaving.
             vim.schedule(function() vim.cmd('startinsert') end)

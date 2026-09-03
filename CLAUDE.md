@@ -346,6 +346,19 @@ was felt as lag while editing.
   is skipped rather than poisoning the file. A single yank over 1 MiB is not
   recorded: 15 of those would be the store.
 
+**Pasting into a terminal goes through `nvim_put` on the terminal buffer, not a
+`chan_send` on its channel**, and the difference is not cosmetic: nvim_put wraps
+the text in **bracketed paste** when the program on the other end asked for it
+(DECSET 2004) and sends it raw when it did not. This terminal holds tmux, a
+shell, and usually an *inner* nvim, and raw text arrives there as *keystrokes* —
+pasting `class Duh()` into an inner nvim sitting in normal mode runs `c`, `l`
+(change-a-character), inserts the rest, and most of the yank is gone with the
+buffer damaged. Bracketed paste is how a program is told "this is text, not
+typing". Verified through the real chain, tmux included: tmux forwards mode 2004
+from the pane's application to its client, so the outer nvim sees it. zsh
+honours it too, which also stops it executing every line but the last of a
+multi-line paste. A program that never asked for it (`cat`) still gets raw text.
+
 ## git review (`:GitReview`)
 
 `after/plugin/git_review.lua` renders a whole branch — the uncommitted changes
