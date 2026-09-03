@@ -232,6 +232,19 @@ function M.buffer_cwd(buf)
   if name ~= "" and vim.bo[buf].buftype == "" then
     return vim.fn.fnamemodify(name, ":h")
   end
+
+  -- Last resort before nvim's own cwd: the cwd of the shell nvim was launched
+  -- from. For a plain file buffer the two are the same, so this only shows up
+  -- in a scratch/[No Name] buffer after a `:cd` has moved nvim away from where
+  -- you started it -- there, the directory you typed the path in is the better
+  -- guess. Deliberately *not* used for the <C-e> scrollback: that is a
+  -- different terminal (see open_under_cursor_term_buf above).
+  local ppid = vim.uv.os_getppid and vim.uv.os_getppid()
+  if ppid then
+    local launched_in = vim.uv.fs_readlink("/proc/" .. ppid .. "/cwd")
+    if launched_in and launched_in ~= "/" then return launched_in end
+  end
+
   return vim.fn.getcwd()
 end
 

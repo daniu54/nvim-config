@@ -423,6 +423,11 @@ Things worth knowing:
   wrong answer here** and cannot be used instead: that is the outer shell, whose
   cwd is wherever nvim was launched, while the paths on screen came from the
   tmux pane two levels further in.
+- **The last resort before nvim's cwd is the directory nvim was launched
+  from** (`/proc/<nvim's ppid>/cwd`). For a file buffer the two are the same,
+  so it only shows up in a scratch or `[No Name]` buffer after a `:cd` has
+  moved nvim away from where you started it — there, the directory you typed
+  the path in is the better guess. nvim's cwd is still tried after it.
 - Resolution order is the buffer's own directory, then nvim's cwd, then the
   file's directory; `~`, `$VARs`, `file://` URLs and **Windows paths**
   (`D:\obsidian_notes`, via `wslpath -u`) all resolve.
