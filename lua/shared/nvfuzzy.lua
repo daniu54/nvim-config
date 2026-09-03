@@ -6,32 +6,55 @@
 -- ordering is the whole point of the command: `nv api` in a big tree should
 -- feel like opening nvim, not like waiting for find(1).
 --
--- What arrives is deliberately split in two:
+-- What arrives is split in two:
 --
---   * the first MAX_TABS hits open as **background tabs** — a real tab each,
---     loaded and highlighted, but the cursor never leaves the results tab.
---     A search hit landing on you mid-keystroke is the thing this avoids.
+--   * the first MAX_TABS hits open as tabs, left of the results tab, and only
+--     the *first* one takes the cursor — everything after it lands behind you.
+--     A search hit yanking you out of the file you are reading is the thing
+--     this avoids.
 --   * everything else is listed in the results buffer, which is an ordinary
 --     scratch buffer of plain paths — the same argument as `:Yanks` and
 --     `:GitReview`: /, n, visual mode, yy, gf and marks all work because it
 --     is text, so there is nothing to learn. <CR> on a path opens it in a tab
---     next to this one (a directory opens as netrw).
+--     (a directory opens as netrw).
 --
--- Ranking and streaming pull against each other -- a rank needs the whole
--- result set, which is the one thing we refuse to wait for -- so the tabs are
--- chosen after a short grace window (see GRACE_MS) rather than from the whole
--- search or from the raw arrival order. The listing below is always ranked,
--- and re-ranks as it grows.
+-- The results tab is always the **last** tab, so tab 1 is the best hit and the
+-- tabline reads best-first, left to right.
 
 local M = {}
 
-local MAX_TABS  = 10   -- hits opened as background tabs
+local MAX_TABS  = 5    -- hits opened as tabs
 local MAX_DEPTH = 50   -- directory levels for a recursive search
 local MAX_HITS  = 2000 -- hard stop; a pattern this loose is a mistake, not a search
 
 local state = nil
 
--- ── searching ──────────────────────────────────────────────────────────────
+-- ── searching, breadth-first ───────────────────────────────────────────────
+--
+-- fd walks depth-first, so in a deep tree the first ten things it prints are
+-- whatever directory it descended into first — `init.lua` at the root losing
+-- to ten files four levels down. The fix is to search in **depth bands** and
+-- release them in order: a band's hits are held until every shallower band has
+-- *exited*, so what reaches you is breadth-first.
+--
+-- The bands stop at 2 because that is where the cost/benefit turns. A band is
+-- one more walk of the tree down to its depth, and measured on a pathological
+-- home directory (a full 50-level walk there does not finish inside a minute)
+-- band 1 costs 0.33s and band 2 costs 0.09s, while in an ordinary repo all of
+-- them are ~0.05s. Two shallow bands buy correct ordering for the root and the
+-- level under it — where the file you meant almost always is — for a delay
+-- bounded by two readdir sweeps. Everything from depth 3 down arrives in walk
+-- order, and the *listing* below is ranked regardless.
+--
+-- Note this is gated on process exits, not on a clock: in a normal repo the
+-- deep band is released after ~50ms, which is sooner than any timer worth
+-- setting, and in a huge one it waits exactly as long as the shallow sweeps
+-- actually take.
+local function bands(depth)
+  if depth <= 1 then return { { 1, 1 } } end
+  if depth == 2 then return { { 1, 1 }, { 2, 2 } } end
+  return { { 1, 1 }, { 2, 2 }, { 3, depth } }
+end
 
 local function fd_bin()
   for _, b in ipairs({ "fdfind", "fd" }) do
@@ -43,13 +66,13 @@ end
 -- fd matches the *basename* by default (no --full-path), which is what
 -- "matching file names" means here, and its pattern is an unanchored regex —
 -- so a plain `api` already behaves as `.*api.*` with no wrapping needed.
-local function search_cmd(opts)
+local function search_cmd(opts, lo, hi)
   local bin = fd_bin()
   if bin then
     return {
       bin, "--hidden", "--exclude", ".git",
       "--type", opts.dirs and "d" or "f",
-      "--max-depth", tostring(opts.depth),
+      "--min-depth", tostring(lo), "--max-depth", tostring(hi),
       "--ignore-case", "--color", "never",
       "--", opts.pattern, ".",
     }
@@ -57,7 +80,7 @@ local function search_cmd(opts)
   -- No fd: find(1) always exists. -iname is a glob, not a regex, so the
   -- substring wrapping that fd got for free has to be written out.
   return {
-    "find", ".", "-maxdepth", tostring(opts.depth),
+    "find", ".", "-mindepth", tostring(lo), "-maxdepth", tostring(hi),
     "-not", "-path", "*/.git/*",
     "-type", opts.dirs and "d" or "f",
     "-iname", "*" .. opts.pattern .. "*",
@@ -82,30 +105,114 @@ local function score(path, pat)
   return s * 10000 - depth * 100 - math.min(#base, 99)
 end
 
+local function by_rank(a, b)
+  if a.score ~= b.score then return a.score > b.score end
+  return a.path < b.path
+end
+
 local function normalize(line)
   local p = line:gsub("\r$", ""):gsub("^%./", "")
   return p ~= "" and p or nil
+end
+
+-- Run the banded search. `on_hit` fires once per hit in release order;
+-- `on_progress(hits, truncated, done)` fires whenever there is something new
+-- to draw. Returns the job ids so a caller can stop early.
+local function run(opts, on_hit, on_progress)
+  local bs = bands(opts.depth)
+  local seen, hits, jobs, queues, finished = {}, {}, {}, {}, {}
+  local released, live, truncated = 0, #bs, false
+
+  local function emit(hit)
+    if seen[hit.path] then return end
+    if #hits >= MAX_HITS then
+      truncated = true
+      for _, j in ipairs(jobs) do pcall(vim.fn.jobstop, j) end
+      return
+    end
+    seen[hit.path] = true
+    hits[#hits + 1] = hit
+    on_hit(hit)
+  end
+
+  -- A band is released once every shallower band has exited; from then on its
+  -- hits stream straight through. What it had queued up meanwhile is ranked
+  -- before it is let out, since by definition it is all in hand at once.
+  local function advance()
+    local upto = 1
+    while finished[upto] do upto = upto + 1 end
+    while released < math.min(upto, #bs) do
+      released = released + 1
+      local q = queues[released]
+      queues[released] = nil
+      table.sort(q, by_rank)
+      for _, h in ipairs(q) do emit(h) end
+    end
+  end
+
+  for i, band in ipairs(bs) do
+    queues[i] = {}
+    local job = vim.fn.jobstart(search_cmd(opts, band[1], band[2]), {
+      cwd = opts.cwd,
+      stdout_buffered = false,
+      on_stdout = function(_, data)
+        local dirty = false
+        for _, line in ipairs(data or {}) do
+          local p = normalize(line)
+          if p then
+            local hit = { path = p, score = score(p, opts.pattern) }
+            if queues[i] then queues[i][#queues[i] + 1] = hit else emit(hit) end
+            dirty = true
+          end
+        end
+        if dirty then on_progress(hits, truncated, false) end
+      end,
+      on_exit = function()
+        finished[i] = true
+        live = live - 1
+        advance()
+        on_progress(hits, truncated, live == 0)
+      end,
+    })
+    if job > 0 then jobs[#jobs + 1] = job end
+  end
+
+  if #jobs == 0 then
+    vim.notify("nv: could not start the search", vim.log.levels.ERROR)
+    on_progress({}, false, true)
+  else
+    advance()  -- band 1 has nothing to wait for
+  end
+  return jobs
 end
 
 -- ── tabs ───────────────────────────────────────────────────────────────────
 
 local tab_utils = require("shared.tab_utils")
 
--- Open `path` in a tab after tab number `after` without taking the cursor
--- there. Restoring the tabpage *and* the window matters: the results tab can
--- be split, and landing back in the wrong window of the right tab is as
--- disruptive as landing in the wrong tab.
-local function open_tab_after(after, path, focus)
-  if tab_utils.focus_if_open(path) then return end
+local function results_tabnr()
+  if state and state.results_tab and vim.api.nvim_tabpage_is_valid(state.results_tab) then
+    return vim.api.nvim_tabpage_get_number(state.results_tab)
+  end
+  return vim.fn.tabpagenr("$")
+end
+
+-- Open `path` in a tab immediately left of the results tab, keeping the
+-- results tab last. Unless `focus`, the cursor goes back where it was —
+-- tabpage *and* window, since the results tab can be split and landing in the
+-- wrong window of the right tab is as disruptive as landing in the wrong tab.
+-- Returns true if a tab was actually opened.
+local function open_hit_tab(path, focus)
+  if tab_utils.focus_if_open(path) then return false end
 
   local cur_tab = vim.api.nvim_get_current_tabpage()
   local cur_win = vim.api.nvim_get_current_win()
   local lazy = vim.o.lazyredraw
   vim.o.lazyredraw = true
 
-  local ok, err = pcall(vim.cmd, after .. "tabedit " .. vim.fn.fnameescape(path))
+  local ok, err = pcall(vim.cmd, (results_tabnr() - 1) .. "tabedit " .. vim.fn.fnameescape(path))
 
-  if not focus and vim.api.nvim_tabpage_is_valid(cur_tab) then
+  if ok and not focus and vim.api.nvim_tabpage_is_valid(cur_tab) then
     vim.api.nvim_set_current_tabpage(cur_tab)
     if vim.api.nvim_win_is_valid(cur_win) then
       vim.api.nvim_set_current_win(cur_win)
@@ -113,7 +220,11 @@ local function open_tab_after(after, path, focus)
   end
 
   vim.o.lazyredraw = lazy
-  if not ok then vim.notify("nv: " .. tostring(err), vim.log.levels.WARN) end
+  if not ok then
+    vim.notify("nv: " .. tostring(err), vim.log.levels.WARN)
+    return false
+  end
+  return true
 end
 
 -- ── the results buffer ─────────────────────────────────────────────────────
@@ -126,12 +237,7 @@ local function set_lines(buf, lines)
 end
 
 local function render()
-  if not (state and vim.api.nvim_buf_is_valid(state.buf)) then return end
-
-  table.sort(state.hits, function(a, b)
-    if a.score ~= b.score then return a.score > b.score end
-    return a.path < b.path
-  end)
+  if not (state and state.buf and vim.api.nvim_buf_is_valid(state.buf)) then return end
 
   local kind = state.dirs and "directories" or "files"
   local scope = state.depth == 1 and "this directory only" or ("depth " .. state.depth)
@@ -145,29 +251,27 @@ local function render()
   }
   local map = {}
 
-  local function section(title, from, to)
-    if from > to then return end
-    table.insert(lines, title)
-    for i = from, to do
-      table.insert(lines, "  " .. state.hits[i].path)
-      map[#lines] = state.hits[i].path
-    end
-    table.insert(lines, "")
-  end
-
-  -- The tabs were opened in arrival order, the listing is ranked, so the two
-  -- sets are not "the top N of this list". Name them by what they are.
+  -- The tabs were opened as they were released, the listing is ranked, so the
+  -- two sets are not "the top N of this list". Name them by what they are.
   local opened, rest = {}, {}
   for _, h in ipairs(state.hits) do
     if state.opened[h.path] then table.insert(opened, h) else table.insert(rest, h) end
   end
-  state.hits = {}
-  for _, h in ipairs(opened) do table.insert(state.hits, h) end
-  local split = #opened
-  for _, h in ipairs(rest) do table.insert(state.hits, h) end
+  table.sort(opened, by_rank)
+  table.sort(rest, by_rank)
 
-  section("open as tabs (" .. split .. "):", 1, split)
-  section("also matched (" .. #rest .. "):", split + 1, #state.hits)
+  local function section(title, list)
+    if #list == 0 then return end
+    table.insert(lines, title)
+    for _, h in ipairs(list) do
+      table.insert(lines, "  " .. h.path)
+      map[#lines] = h.path
+    end
+    table.insert(lines, "")
+  end
+
+  section("open in the tabs to the left (" .. #opened .. "):", opened)
+  section("also matched (" .. #rest .. "):", rest)
 
   if state.done and #state.hits == 0 then
     lines[#lines + 1] = "no search results."
@@ -176,7 +280,7 @@ local function render()
     lines[#lines + 1] = ""
   end
 
-  lines[#lines + 1] = "<CR> open in a tab next to this one  ·  R refresh  ·  q close"
+  lines[#lines + 1] = "<CR> open in a tab  ·  R refresh  ·  q close"
 
   set_lines(state.buf, lines)
   state.line_path = map
@@ -229,60 +333,17 @@ local function setup_buffer()
   vim.wo.relativenumber = false
   pcall(vim.api.nvim_buf_set_name, buf, "nv: " .. (state and state.pattern or ""))
 
-  local function under_cursor()
-    return state and state.line_path and state.line_path[vim.fn.line(".")]
-  end
+  state.results_tab = vim.api.nvim_get_current_tabpage()
 
   vim.keymap.set("n", "<CR>", function()
-    local path = under_cursor()
-    if not path then return end
-    open_tab_after(tostring(vim.fn.tabpagenr()), path, true)
-  end, { buffer = buf, desc = "nv: open this path in a tab next to the results" })
+    local path = state and state.line_path and state.line_path[vim.fn.line(".")]
+    if path then open_hit_tab(path, true) end
+  end, { buffer = buf, desc = "nv: open this path in a tab" })
 
   vim.keymap.set("n", "R", function() M.rerun() end, { buffer = buf, desc = "nv: run the search again" })
   vim.keymap.set("n", "q", close_results, { buffer = buf, desc = "nv: close the results" })
 
   return buf
-end
-
--- ── driving a search ───────────────────────────────────────────────────────
-
-local function run(opts, on_hit, on_done)
-  local seen, hits, truncated = {}, {}, false
-  local job
-
-  local function feed(_, data)
-    local dirty = false
-    for _, line in ipairs(data or {}) do
-      local p = normalize(line)
-      if p and not seen[p] then
-        seen[p] = true
-        if #hits >= MAX_HITS then
-          truncated = true
-          if job then pcall(vim.fn.jobstop, job) end
-          break
-        end
-        local hit = { path = p, score = score(p, opts.pattern) }
-        hits[#hits + 1] = hit
-        on_hit(hit)
-        dirty = true
-      end
-    end
-    if dirty then on_done(hits, truncated, false) end
-  end
-
-  job = vim.fn.jobstart(search_cmd(opts), {
-    cwd = opts.cwd,
-    stdout_buffered = false,
-    on_stdout = feed,
-    on_exit = function() on_done(hits, truncated, true) end,
-  })
-
-  if job <= 0 then
-    vim.notify("nv: could not start the search", vim.log.levels.ERROR)
-    on_done({}, false, true)
-  end
-  return job
 end
 
 -- ── entry points ───────────────────────────────────────────────────────────
@@ -297,34 +358,8 @@ local function opts_from_env()
   }
 end
 
--- -f: open the best hit and nothing else. It still runs as a job so nvim
--- stays responsive, and it stops early on a perfect basename match — with -t
--- (the `nvf` alias) that is nearly always the first thing fd prints.
-local function run_first(opts)
-  local best, done, job = nil, false, nil
-  local function finish()
-    if done then return end
-    done = true
-    if job then pcall(vim.fn.jobstop, job) end
-    if best then
-      vim.cmd("edit " .. vim.fn.fnameescape(best.path))
-    else
-      M.show(opts, {}, false, true)
-    end
-  end
-
-  job = run(opts,
-    function(hit)
-      if not best or hit.score > best.score then best = hit end
-    end,
-    function(_, _, finished)
-      if best and best.score >= 100 * 10000 - 9999 then finish() end
-      if finished then finish() end
-    end)
-end
-
--- Populate/refresh the results buffer. Split out so `R` can reuse it.
-function M.show(opts, hits, truncated, done)
+function M.show(hits, truncated, done)
+  if not state then return end
   state.hits, state.truncated, state.done = hits, truncated, done
   if not state.buf then state.buf = setup_buffer() end
   if done and #hits == 0 and not state.tree then
@@ -333,11 +368,6 @@ function M.show(opts, hits, truncated, done)
   render()
 end
 
--- How long to hold the first hits back before choosing which become tabs.
--- Long enough that a small tree finishes searching inside it (so the tabs are
--- genuinely the best 10), short enough not to read as latency.
-local GRACE_MS = 150
-
 function M.rerun()
   if not state then return end
   local opts = {
@@ -345,45 +375,54 @@ function M.rerun()
     depth = state.depth, cwd = state.cwd,
   }
   state.opened, state.tree = {}, nil
-
-  -- The tabs would otherwise be the first ten hits fd happens to print, which
-  -- in a deep tree is whatever directory it walked into first -- `init.lua` at
-  -- the root losing to ten files four levels down. So the opening is held for
-  -- GRACE_MS and then ranks what has arrived. A small tree finishes inside the
-  -- grace window and gets its true top ten; a big one gets the best of the
-  -- first moment, and anything after that is opened in arrival order because
-  -- by then there is nothing left to compare it against.
-  local pending, flushed = {}, false
-
-  local function open_bg(path)
-    state.opened[path] = true
-    open_tab_after(tostring(vim.fn.tabpagenr("$")), path, false)
-  end
-
-  local function flush()
-    if flushed then return end
-    flushed = true
-    table.sort(pending, function(a, b)
-      if a.score ~= b.score then return a.score > b.score end
-      return a.path < b.path
-    end)
-    for i = 1, math.min(MAX_TABS, #pending) do open_bg(pending[i].path) end
-    pending = {}
-  end
-
-  vim.defer_fn(flush, GRACE_MS)
+  local tabs_opened = 0
+  local first_run = not state.ran_once
+  state.ran_once = true
 
   run(opts,
     function(hit)
-      if not flushed then
-        pending[#pending + 1] = hit
-      elseif vim.tbl_count(state.opened) < MAX_TABS then
-        open_bg(hit.path)
+      if tabs_opened >= MAX_TABS then return end
+      -- Only the first hit takes the cursor, and only on the first run: `R`
+      -- refreshing a list you are reading must not throw you out of it.
+      local focus = first_run and tabs_opened == 0
+        and vim.api.nvim_get_current_tabpage() == state.results_tab
+      if open_hit_tab(hit.path, focus) then
+        state.opened[hit.path] = true
+        tabs_opened = tabs_opened + 1
       end
     end,
-    function(hits, truncated, done)
-      if done then flush() end
-      M.show(opts, hits, truncated, done)
+    M.show)
+end
+
+-- -f: open the best hit and nothing else. It still runs as a job so nvim stays
+-- responsive, and it stops as soon as the shallowest band that has anything in
+-- it is released — with -t (the `nvf` alias) that is the whole search.
+local function run_first(opts)
+  local best, done, jobs = nil, false, nil
+
+  local function finish()
+    if done then return end
+    done = true
+    for _, j in ipairs(jobs or {}) do pcall(vim.fn.jobstop, j) end
+    if best then
+      vim.cmd("edit " .. vim.fn.fnameescape(best.path))
+    else
+      M.show({}, false, true)
+    end
+  end
+
+  jobs = run(opts,
+    function(hit)
+      if not best or hit.score > best.score then best = hit end
+    end,
+    function(_, _, finished)
+      -- Stop at the first *released* hit. Releases are breadth-first, so that
+      -- hit comes from the shallowest band with anything in it, and a band
+      -- that was held long enough to queue up is ranked before it is let out.
+      -- Waiting for the rest of a 50-level walk to confirm the winner is
+      -- exactly the wait this command exists to avoid.
+      if best then finish() end
+      if finished then finish() end
     end)
 end
 
@@ -392,18 +431,16 @@ function M.start()
     local opts = opts_from_env()
     if opts.pattern == "" then return end
 
+    state = {
+      pattern = opts.pattern, dirs = opts.dirs, depth = opts.depth, cwd = opts.cwd,
+      hits = {}, opened = {}, line_path = {}, done = false, buf = nil,
+    }
+
     if opts.first then
-      state = { pattern = opts.pattern, dirs = opts.dirs, depth = opts.depth,
-                cwd = opts.cwd, hits = {}, opened = {}, line_path = {} }
-      state.buf = nil
       run_first(opts)
       return
     end
 
-    state = {
-      pattern = opts.pattern, dirs = opts.dirs, depth = opts.depth, cwd = opts.cwd,
-      hits = {}, opened = {}, line_path = {}, done = false,
-    }
     state.buf = setup_buffer()
     render()
     M.rerun()
