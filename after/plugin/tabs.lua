@@ -6,15 +6,20 @@
 -- free — nothing in this config used it — and the builtin it displaces is
 -- page-forward, which is already <PageDown>, J and <C-d> here.
 --
--- <Home>/<End> move between tabs. They were <PageUp>/<PageDown> first, which
--- was the wrong key to spend: J/K are non-recursive maps *onto* <PageDown>/
--- <PageUp>, so taking those keys left the aliases pointing at a tab switch
--- and paging with J/K quietly became tab-walking. <Home>/<End> displace
--- start-of-line and end-of-line instead, which are 0/^ and $ here anyway.
+-- -/= move between tabs, and they are the third key this has been on. First
+-- <PageUp>/<PageDown>, which was the wrong key to spend: J/K are non-recursive
+-- maps *onto* those, so taking them left the aliases pointing at a tab switch
+-- and paging with J/K quietly became tab-walking. Then <Home>/<End>, which
+-- worked but sit at the far end of the keyboard for a key pressed constantly.
+-- - and = are next to each other under the right hand and both displace
+-- something cheap: - is up-a-line-to-first-non-blank (k/^ do it) and = is the
+-- indent operator, which stays whole in visual mode and as = in an operator
+-- position is not something this config reaches for. == is gone; select the
+-- line and press = instead.
 --
 -- Direction follows the tabline, not vim's numbering-by-recency instincts:
--- <Home> goes left, <End> goes right. gt/gT stay as remap.lua has them
--- (reversed from stock).
+-- - goes left, = goes right. gt/gT stay as remap.lua has them (reversed from
+-- stock).
 
 local map = function(lhs, rhs, desc)
   vim.keymap.set('n', lhs, rhs, { desc = desc })
@@ -22,8 +27,8 @@ end
 
 -- ── walking the tabline ────────────────────────────────────────────────────
 
-map('<Home>', function() vim.cmd('tabprevious') end, 'Previous tab (left in the tabline)')
-map('<End>',  function() vim.cmd('tabnext') end,     'Next tab (right in the tabline)')
+map('-', function() vim.cmd('tabprevious') end, 'Previous tab (left in the tabline)')
+map('=', function() vim.cmd('tabnext') end,     'Next tab (right in the tabline)')
 
 -- ── <C-f> chord ────────────────────────────────────────────────────────────
 

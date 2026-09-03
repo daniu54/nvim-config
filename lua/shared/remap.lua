@@ -528,10 +528,11 @@ vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
     callback = function() vim.bo.commentstring = "// %s" end,
 })
 
--- <C-f>: the tab chord (after/plugin/tabs.lua). Walking the tabline is
--- <Home>/<End> there -- it was <PageUp>/<PageDown>, but J/K above are
--- non-recursive maps *onto* those keys, so taking them turned J/K into a tab
--- switch. <PageUp>/<PageDown> page again, exactly as K/J do.
+-- <C-f>: the tab chord (after/plugin/tabs.lua). Walking the tabline is -/=
+-- there -- it was <PageUp>/<PageDown>, but J/K above are non-recursive maps
+-- *onto* those keys, so taking them turned J/K into a tab switch, and then
+-- <Home>/<End>, which are too far from the home row for a key pressed this
+-- often. <PageUp>/<PageDown> page again, exactly as K/J do.
 
 -- <C-b>: freed for tmux. tmux (running inside the nvim :terminal) uses C-b as
 -- its prefix key; nvim never intercepted <C-b> in terminal mode so the prefix
@@ -540,7 +541,20 @@ vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
 -- still K / <PageUp> / <leader><BS>.
 vim.keymap.set({ "n", "v" }, "<C-b>", "<Nop>", { desc = "(freed for tmux prefix)" })
 
--- <C-w> in a terminal: leave terminal mode, and nothing else.
+-- <C-S-w> in a terminal: leave terminal mode, and nothing else.
+--
+-- It was a plain <C-w>, and that key had to be given back. A terminal here
+-- holds tmux, and a tmux pane usually holds an *inner* nvim — whose own split
+-- navigation is <C-w>h and friends. The outer nvim swallowing <C-w> meant the
+-- inner one could never move between its splits at all. Terminal mode forwards
+-- any key it has no map for, so the fix is to stop mapping it and put
+-- leave-terminal-mode on the shifted <C-S-w> instead.
+--
+-- <C-S-w> is a key distinct from <C-w> only over the kitty keyboard protocol.
+-- In a terminal that does not speak it shift is dropped and this simply never
+-- fires — and there is deliberately no plain-<C-w> fallback, since that is the
+-- key being handed to the inner nvim. Windows Terminal speaks it, nvim 0.11
+-- enables it, tmux forwards it. The builtin <C-\><C-n> works either way.
 --
 -- It is deliberately NOT `[[<C-\><C-n><C-w>]]` with remap on, which is what it
 -- was first written as and which recursed until WSL fell over. remap means the
@@ -554,9 +568,10 @@ vim.keymap.set({ "n", "v" }, "<C-b>", "<Nop>", { desc = "(freed for tmux prefix)
 -- The other half of the lesson is why the rhs stops here rather than starting a
 -- window command: a pending <C-w> makes the *next* key a normal-mode key in a
 -- window that still looks like a shell, and <C-s> alone opens a tmux terminal
--- in a split. So <C-w> puts you in terminal-NORMAL mode and stops. <Esc> keeps
--- you there, i resumes --TERMINAL--, and a window command is a second <C-w>.
-vim.keymap.set("t", "<C-w>", [[<C-\><C-n>]], { desc = "Leave terminal mode (terminal-normal)" })
+-- in a split. So this puts you in terminal-NORMAL mode and stops. <Esc> keeps
+-- you there, i resumes --TERMINAL--, and a window command from there is a plain
+-- <C-w> like anywhere else.
+vim.keymap.set("t", "<C-S-w>", [[<C-\><C-n>]], { desc = "Leave terminal mode (terminal-normal)" })
 
 -- close current split
 vim.keymap.set("n", "<C-w>x", "<C-w>c", { desc = "Close current split" })

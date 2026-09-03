@@ -37,7 +37,7 @@ lua/shared/
   copilot.lua               — shared Copilot infra (bootstrap, sensitive-file check, opt-in helper, <Right>/<S-Right>)
 after/plugin/
   autosave.lua              — autosave file-backed buffers (:AutoSaveToggle)
-  tabs.lua                  — tab management: the <C-f> chord + Home/End
+  tabs.lua                  — tab management: the <C-f> chord + -/=
   yanks.lua                 — :Yanks / <C-p>, the yank history as a buffer
   git_review.lua            — :GitReview, the branch's commits+diffs as markdown
   markdown_convert.lua      — :ConvertToPdf/:ConvertToTex/:ConvertToWord via mdpdf
@@ -576,13 +576,32 @@ picker · `m` move this split into its own tab (`<C-w>T`; it was `<C-t>o`,
 before `o` was needed for "only") · `s`/`v` fold the previous tab into a split
 · `<`/`>` move this tab along the tabline.
 
-**`<Home>`/`<End>` walk the tabline** — left and right as drawn, not vim's
-numbering-by-recency. They were `<PageUp>`/`<PageDown>` first, and that was the
-wrong key to spend: `J`/`K` are non-recursive maps *onto* `<PageDown>`/`<PageUp>`,
-so taking those keys left the aliases pointing at a tab switch and paging with
-`J`/`K` quietly became tab-walking. `<Home>`/`<End>` displace start- and
-end-of-line, which are `0`/`^` and `$` here anyway. `gt`/`gT` stay reversed, as
+**`-`/`=` walk the tabline** — left and right as drawn, not vim's
+numbering-by-recency — and they are the third key this has been on. First
+`<PageUp>`/`<PageDown>`, which was the wrong key to spend: `J`/`K` are
+non-recursive maps *onto* `<PageDown>`/`<PageUp>`, so taking those keys left the
+aliases pointing at a tab switch and paging with `J`/`K` quietly became
+tab-walking. Then `<Home>`/`<End>`, which worked but sit at the far end of the
+keyboard for a key pressed constantly. `-` and `=` are adjacent under the right
+hand and both displace something cheap: `-` is up-a-line-to-first-non-blank
+(`k`/`^` do it) and `=` is the indent operator — **`==` and `=ap` are gone**,
+and reindenting is now a visual selection plus `=`. `gt`/`gT` stay reversed, as
 `remap.lua` has them.
+
+## leaving terminal mode (`<C-S-w>`)
+
+`lua/shared/remap.lua`. A `:terminal` here runs tmux, and a tmux pane usually
+runs an **inner nvim** — whose split navigation is `<C-w>h` and friends. The
+outer nvim used to map `<C-w>` in terminal mode, so that chord never reached
+the inner editor and its splits were unreachable. Terminal mode forwards any
+key it has no map for, so the fix is to leave `<C-w>` unmapped and put
+leave-terminal-mode on **`<C-S-w>`**.
+
+`<C-S-w>` is a key distinct from `<C-w>` **only over the kitty keyboard
+protocol** — elsewhere shift is dropped and it never fires. Windows Terminal
+speaks it, nvim 0.11 enables it, tmux forwards it. There is deliberately no
+plain-`<C-w>` fallback, since that key is exactly what is being handed through.
+The builtin `<C-\><C-n>` works regardless.
 
 ## git review (`:GitReview`)
 
