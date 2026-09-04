@@ -2,6 +2,11 @@ local conform = require("conform")
 
 local prettier_cmd = vim.fn.expand("~/.npm-global/bin/prettier")
 
+-- 10s, not the 2s this used to be: prettier takes ~2s on a 400KB minified html
+-- file, and unminifying one is what <leader>= is for. The timeout only costs
+-- anything when it actually fires.
+local FORMAT_TIMEOUT_MS = 10000
+
 conform.setup({
     formatters_by_ft = {
         markdown = { "prettier" },
@@ -42,13 +47,10 @@ conform.setup({
         if vim.b[bufnr].autosave_in_progress then
             return
         end
-        return { timeout_ms = 5000, lsp_fallback = false }
+        return { timeout_ms = FORMAT_TIMEOUT_MS, lsp_fallback = false }
     end,
 })
 
--- 10s, not the 2s this used to be: prettier takes ~2s on a 400KB minified
--- html file, and unminifying one is exactly what this keymap is for. The
--- timeout only costs anything when it fires.
 vim.keymap.set({ "n", "v" }, "<leader>=", function()
-    conform.format({ timeout_ms = 10000, lsp_fallback = false })
+    conform.format({ timeout_ms = FORMAT_TIMEOUT_MS, lsp_fallback = false })
 end, { desc = "Format file" })
