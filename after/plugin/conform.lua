@@ -1,14 +1,32 @@
 local conform = require("conform")
 
+local prettier_cmd = vim.fn.expand("~/.npm-global/bin/prettier")
+
 conform.setup({
     formatters_by_ft = {
         markdown = { "prettier" },
-        html = { "prettier" },
+        html = { "prettier_html" },
+        css = { "prettier" },
+        javascript = { "prettier" },
+        json = { "prettier" },
+        yaml = { "prettier" },
         zig = { "zigfmt" },
     },
     formatters = {
         prettier = {
-            command = vim.fn.expand("~/.npm-global/bin/prettier"),
+            command = prettier_cmd,
+        },
+        -- html only. `--html-whitespace-sensitivity ignore` is what actually
+        -- breaks up a minified one-line document: prettier's default ("css")
+        -- keeps inline elements (<b>, <span>, <a>) glued to the text around
+        -- them, because inserting a newline there changes what the browser
+        -- renders. `ignore` drops that guarantee and puts every element on its
+        -- own line — the right trade for reading a blob, wrong for prose-heavy
+        -- markup where the added/removed spaces are visible.
+        prettier_html = {
+            command = prettier_cmd,
+            args = { "--html-whitespace-sensitivity", "ignore", "--stdin-filepath", "$FILENAME" },
+            stdin = true,
         },
         zigfmt = {
             -- use the Linux-native anyzig build, not `zig` (Windows exe on
@@ -24,10 +42,13 @@ conform.setup({
         if vim.b[bufnr].autosave_in_progress then
             return
         end
-        return { timeout_ms = 2000, lsp_fallback = false }
+        return { timeout_ms = 5000, lsp_fallback = false }
     end,
 })
 
+-- 10s, not the 2s this used to be: prettier takes ~2s on a 400KB minified
+-- html file, and unminifying one is exactly what this keymap is for. The
+-- timeout only costs anything when it fires.
 vim.keymap.set({ "n", "v" }, "<leader>=", function()
-    conform.format({ timeout_ms = 2000, lsp_fallback = false })
+    conform.format({ timeout_ms = 10000, lsp_fallback = false })
 end, { desc = "Format file" })
