@@ -607,7 +607,7 @@ The builtin `<C-\><C-n>` works regardless.
 
 `after/plugin/git_review.lua` renders a whole branch — the uncommitted changes
 first, then the whole branch aggregated into one net diff, then every commit
-with its message and its per-file diffs — as **one scratch markdown buffer**,
+with its message and its per-file diffs — as **one markdown file**,
 oldest commit first, and nothing else. It is the answer to reviewing by opening the
 changed files one at a time, which loses both the order the work happened in
 and the message explaining why.
@@ -652,6 +652,10 @@ because it is text, so there is nothing to learn.
 - `<CR>` opens the file at the diff line under the cursor, in the window
   `:GitReview` was called from. `]]`/`[[` move by commit, `R` refreshes, `q`
   closes, `zM` folds to one line per commit (headings drive the fold expr).
+- **The window wraps** (`wrap` + `linebreak` + `breakindent`). A review is read,
+  not scrolled sideways: prose paragraphs and long diff lines both stay on
+  screen, and `breakindent` keeps a continued diff line under its own `+`/`-`
+  column instead of at the left margin.
 
 Things worth knowing:
 
@@ -672,8 +676,30 @@ Things worth knowing:
   exists on the `+` side of a hunk records its new-file line number, counted
   from the `@@` header. Nothing is re-parsed on the jump, so the mapping cannot
   drift from what is on screen.
-- One buffer, reused (again as `:Yanks`) — a second `:GitReview` refreshes it
-  rather than stacking windows onto stale copies of a branch that moves.
+- **It is a real file, at `/tmp/git-reviews/<repo>-<branch>.md`**, not a
+  `nofile` scratch buffer. It already *is* a markdown document, so being one on
+  disk costs nothing and buys everything a file gets: reopen it later, diff two
+  of them, page it from the shell, run `:ConvertToPdf` on it. One file per
+  repo+branch, overwritten on every render — so the reuse is the same as
+  `:Yanks`, a second `:GitReview` refreshes rather than stacking windows onto
+  stale copies of a branch that moves. It is `nomodifiable`, so autosave never
+  touches it.
+- **Living in `/tmp` is what makes path resolution the interesting part**: every
+  path in the document is relative to the *repo*, and the document is not in it.
+  Two things follow, and both are load-bearing —
+  - `repo_root()` reads the repo off the current buffer's name, which from a
+    review buffer now answers `/tmp`. So the root, the jump index and the origin
+    window are stored **per review buffer** (`reviews[buf]`) and a refresh
+    passes the root back in, rather than rediscovering it.
+  - The buffer sets `b:open_under_cursor_cwd` to the repo root — the override
+    `lua/shared/open_under_cursor.lua` documents for exactly this — so `gf`,
+    `gx` and `<leader>gf` resolve `lua/shared/remap.lua` against the repo and
+    not against `/tmp/git-reviews`. A `<CR>` that is *not* on a diff line falls
+    through to that same handler, which is how a `### path` heading opens.
+  - A review reopened in a **fresh nvim** has no state table behind it, so the
+    header carries a `` Repo: `<root>` `` line and a `BufReadPost` autocmd on
+    `/tmp/git-reviews/*.md` reads it back into `b:open_under_cursor_cwd`. The
+    file stays followable on its own, which is half the point of it being a file.
 
 ## autosave
 

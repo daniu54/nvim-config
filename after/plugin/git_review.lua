@@ -273,6 +273,10 @@ local function render(root, branch, range, label, commits, working, note)
 
   put(('# Branch %s'):format(branch))
   put('')
+  -- The repo root, in the document itself. It reads as information, and it is
+  -- also how a review reopened in a fresh nvim recovers the directory its
+  -- relative paths are written against — see the BufReadPost autocmd below.
+  put(('Repo: `%s`'):format(root))
 
   if #commits > 0 then
     put(('Contains %d commit%s (%s), merges excluded.')
@@ -349,23 +353,39 @@ end
 
 -- ── the buffer ──────────────────────────────────────────────────────────────
 
--- One buffer, reused (as :Yanks does): a second :GitReview refreshes it rather
--- than stacking windows onto stale copies of a branch that moves under them.
-local state = { buf = nil, index = {}, args = nil, origin = nil }
+-- The review is written to a real file under /tmp/git-reviews/ rather than held
+-- in a scratch buffer: it *is* a markdown document, and being one on disk means
+-- it can be reopened, diffed, handed to a pager or exported by :ConvertToPdf
+-- like any other. One file per repo+branch, overwritten on every render — a
+-- second :GitReview refreshes it rather than stacking windows onto stale copies
+-- of a branch that moves under them.
+local REVIEW_DIR = '/tmp/git-reviews'
+
+-- The review buffer lives outside the repository it describes, so repo_root()
+-- would resolve /tmp, not the branch under review. Everything a keymap needs —
+-- the repo root, the jump index, the window to jump into — is therefore stored
+-- per buffer here rather than rediscovered from the buffer's own name.
+local reviews = {}
 
 local function jump()
-  local hit = state.index[vim.api.nvim_win_get_cursor(0)[1]]
+  local st = reviews[vim.api.nvim_get_current_buf()]
+  if not st then return end
+  local hit = st.index[vim.api.nvim_win_get_cursor(0)[1]]
   if not hit then
-    return vim.notify('no file line under the cursor', vim.log.levels.WARN)
+    -- Not a diff line: a `### path` heading, the `Repo:` line, a path named in
+    -- a commit message. Hand it to the same `<CR>` every other buffer has —
+    -- b:open_under_cursor_cwd points it at the repo, so a relative path in the
+    -- document resolves there and not at the review file's own /tmp directory.
+    return require('shared.open_under_cursor').open_under_cursor({ silent = true })
   end
-  local root = repo_root() or vim.uv.cwd()
+  local root = st.root
   local path = root .. '/' .. hit.file
   if vim.fn.filereadable(path) == 0 then
     return vim.notify(('not in the working tree: %s'):format(hit.file), vim.log.levels.WARN)
   end
   -- Open in the window :GitReview was called from, keeping the review visible.
-  if state.origin and vim.api.nvim_win_is_valid(state.origin) then
-    vim.api.nvim_set_current_win(state.origin)
+  if st.origin and vim.api.nvim_win_is_valid(st.origin) then
+    vim.api.nvim_set_current_win(st.origin)
   else
     vim.cmd('wincmd p')
   end
@@ -374,21 +394,36 @@ local function jump()
   vim.cmd('normal! zz')
 end
 
-local function ensure_buf()
-  if state.buf and vim.api.nvim_buf_is_valid(state.buf) then return state.buf end
-  local buf = vim.api.nvim_create_buf(false, true)
-  state.buf = buf
-  vim.bo[buf].buftype = 'nofile'
-  vim.bo[buf].bufhidden = 'hide'
+-- review_path is the handle: /tmp/git-reviews/<repo>-<branch>.md, so the same
+-- branch always lands on the same file and two repos never share one.
+local function review_path(root, branch)
+  vim.fn.mkdir(REVIEW_DIR, 'p')
+  local repo = vim.fn.fnamemodify(root, ':t')
+  local name = repo .. '-' .. (branch or 'review')
+  name = (name:gsub('[^%w%.%-_]', '-'):gsub('%-+', '-'):gsub('^%-', ''):gsub('%-$', ''))
+  return REVIEW_DIR .. '/' .. name .. '.md'
+end
+
+local function ensure_buf(path)
+  local buf = vim.fn.bufadd(path)
+  vim.fn.bufload(buf)
+  if reviews[buf] then return buf end
+  reviews[buf] = {}
   vim.bo[buf].swapfile = false
   vim.bo[buf].filetype = 'markdown'
-  pcall(vim.api.nvim_buf_set_name, buf, 'git-review')
+  vim.api.nvim_create_autocmd('BufWipeout', {
+    buffer = buf,
+    callback = function() reviews[buf] = nil end,
+  })
 
   local function map(lhs, rhs, desc)
     vim.keymap.set('n', lhs, rhs, { buffer = buf, nowait = true, silent = true, desc = desc })
   end
   map('q', function() vim.cmd('close') end, 'close the review')
-  map('R', function() M.open(state.args or {}) end, 'refresh')
+  map('R', function()
+    local st = reviews[buf] or {}
+    M.open(vim.tbl_extend('force', st.args or {}, { root = st.root }))
+  end, 'refresh')
   map('<CR>', jump, 'open the file at this diff line')
   -- Commit-to-commit movement, since a review is read commit by commit.
   map(']]', function() vim.fn.search('^## ', 'W') end, 'next commit')
@@ -397,8 +432,9 @@ local function ensure_buf()
 end
 
 function M.open(opts)
-  state.args = opts
-  local root = repo_root()
+  -- opts.root is set on a refresh: the review buffer sits outside the repo, so
+  -- repo_root() from there would resolve /tmp rather than the branch.
+  local root = opts.root or repo_root()
   if not root then
     return vim.notify('not inside a git repository', vim.log.levels.ERROR)
   end
@@ -425,8 +461,19 @@ function M.open(opts)
   end
 
   local out, index = render(root, branch, range, label, commits, working, note)
-  local buf = ensure_buf()
-  state.index = index
+  local path = review_path(root, branch)
+  local ok, werr = pcall(vim.fn.writefile, out, path)
+  if not ok then
+    return vim.notify(('could not write %s: %s'):format(path, werr), vim.log.levels.ERROR)
+  end
+  local buf = ensure_buf(path)
+  local st = reviews[buf]
+  st.index, st.args, st.root = index, { arg = opts.arg, vertical = opts.vertical }, root
+  -- Every path in this document is relative to the repo, but the document
+  -- itself lives in /tmp — so open_under_cursor's `<CR>`/`gf`/`<leader>gf`
+  -- would resolve them against /tmp/git-reviews and find nothing. This is the
+  -- override that module documents for exactly this case.
+  vim.b[buf].open_under_cursor_cwd = root
 
   vim.bo[buf].modifiable = true
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, out)
@@ -437,13 +484,18 @@ function M.open(opts)
   -- narrow window next to the code is often the better shape for reading one.
   local win = vim.fn.bufwinid(buf)
   if win == -1 then
-    state.origin = vim.api.nvim_get_current_win()
+    st.origin = vim.api.nvim_get_current_win()
     vim.cmd(opts.vertical and 'botright vsplit' or 'tab split')
     win = vim.api.nvim_get_current_win()
     vim.api.nvim_win_set_buf(win, buf)
   end
   vim.api.nvim_set_current_win(win)
-  vim.wo[win].wrap = false
+  -- Wrapped, because this is prose with diffs in it and a review is read, not
+  -- scrolled sideways: linebreak keeps the wrap on word boundaries and
+  -- breakindent keeps a continued diff line under its own +/- column.
+  vim.wo[win].wrap = true
+  vim.wo[win].linebreak = true
+  vim.wo[win].breakindent = true
   vim.wo[win].number = false
   vim.wo[win].relativenumber = false
   vim.wo[win].conceallevel = 0
@@ -454,6 +506,23 @@ function M.open(opts)
   vim.wo[win].foldlevel = 99
   vim.api.nvim_win_set_cursor(win, { 1, 0 })
 end
+
+-- A review file outlives the session that wrote it: reopened in a fresh nvim it
+-- is just markdown in /tmp, with no state table behind it. The `Repo:` line in
+-- its header is enough to point path resolution back at the repository, so the
+-- file's paths stay followable with `gf` and `<CR>` on their own.
+vim.api.nvim_create_autocmd('BufReadPost', {
+  pattern = REVIEW_DIR .. '/*.md',
+  callback = function(ev)
+    for _, line in ipairs(vim.api.nvim_buf_get_lines(ev.buf, 0, 10, false)) do
+      local root = line:match('^Repo: `(.+)`$')
+      if root and vim.fn.isdirectory(root) == 1 then
+        vim.b[ev.buf].open_under_cursor_cwd = root
+        return
+      end
+    end
+  end,
+})
 
 vim.api.nvim_create_user_command('GitReview', function(cmd)
   M.open({ arg = vim.trim(cmd.args), vertical = cmd.bang })
