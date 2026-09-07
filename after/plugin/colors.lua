@@ -22,6 +22,11 @@ vim.api.nvim_set_hl(0, "NvimStatusLineDefault", statusline_default)
 vim.api.nvim_set_hl(0, "NvimStatusLineTerminal", vim.tbl_extend("force", statusline_default, { bg = "#4d3319" }))
 vim.api.nvim_set_hl(0, "StatusLine", { link = "NvimStatusLineDefault" })
 
+-- showbreak (the wrap continuation marker, set.lua) rides on NonText, which has
+-- no other visible use here: 'list' is off and fillchars hides eob. Dropped from
+-- rose-pine's muted to highlight_med so the arrow recedes behind the code.
+vim.api.nvim_set_hl(0, "NonText", { fg = "#403d52" })
+
 -- Netrw dotfiles/dotdirs: shown muted in netrw tree (rose-pine muted)
 vim.api.nvim_set_hl(0, "NetrwDotFile", { fg = "#6e6a86" })           -- dotfiles
 vim.api.nvim_set_hl(0, "NetrwDotDir",  { fg = "#6e6a86", bold = true }) -- dotdirs (bold preserved)
