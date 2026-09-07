@@ -331,8 +331,8 @@ local function open_cheatsheet()
     title_pos = "center",
   })
 
-  vim.wo[win].cursorline = false
-  vim.wo[win].wrap       = false
+  vim.wo[win][0].cursorline = false
+  vim.wo[win][0].wrap       = false
 
   -- close with q or <Esc>
   for _, key in ipairs({ "q", "<Esc>" }) do

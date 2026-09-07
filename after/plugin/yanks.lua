@@ -190,10 +190,12 @@ local function open(opts)
 
     vim.cmd(opts.vertical and 'botright vsplit' or 'botright split')
     vim.api.nvim_win_set_buf(0, state.buf)
-    vim.wo.number = false
-    vim.wo.relativenumber = false
-    vim.wo.wrap = false
-    vim.wo.cursorline = true
+    -- Scoped to this buffer in this window ([0][0]), so the split reverts to
+    -- the global defaults if another buffer is ever shown in it.
+    vim.wo[0][0].number = false
+    vim.wo[0][0].relativenumber = false
+    vim.wo[0][0].wrap = false
+    vim.wo[0][0].cursorline = true
 
     render()
 

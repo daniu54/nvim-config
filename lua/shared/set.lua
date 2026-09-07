@@ -151,6 +151,30 @@ vim.opt.isfname:append("@-@")
 
 vim.opt.fillchars = "eob: " -- hide tilde
 
+-- line wrapping
+--
+-- `wrap` is nvim's default, but it is stated here because it is *window*-local:
+-- a scratch window that turns it off leaks nowrap onto whatever buffer is shown
+-- in that window next. (The scratch windows in this config — nvfuzzy, :Yanks,
+-- :Cheatsheet, :ConvertToPdf — set it with the `vim.wo[win][0]` buffer-scoped
+-- form for exactly that reason.) `:verbose setlocal wrap?` names the culprit if
+-- one ever shows up again.
+vim.opt.wrap = true
+
+-- Break on word boundaries, not mid-word: `some code {products}` wraps before
+-- the `{`, not through the middle of `products`.
+vim.opt.linebreak = true
+-- linebreak breaks at the characters in `breakat`, whose default also includes
+-- punctuation (!@*-+;:,./?) — which still splits `foo.bar()` and hyphenated
+-- words. Whitespace only, so a token wraps whole.
+vim.opt.breakat = " \t"
+-- A continued line keeps the original's indent...
+vim.opt.breakindent = true
+-- ...and is marked with a squiggly arrow. `sbr` in breakindentopt draws it at
+-- the indent rather than out at the left margin.
+vim.opt.showbreak = "\u{21aa} "
+vim.opt.breakindentopt = "sbr"
+
 -- Set completeopt to have a better completion experience
 vim.opt.completeopt = 'menuone,noselect'
 

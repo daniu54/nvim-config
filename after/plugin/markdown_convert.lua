@@ -35,9 +35,9 @@ local function open_progress(title)
     vim.cmd("botright 12split")
     state.win = vim.api.nvim_get_current_win()
     vim.api.nvim_win_set_buf(state.win, state.buf)
-    vim.wo[state.win].number = false
-    vim.wo[state.win].relativenumber = false
-    vim.wo[state.win].wrap = false
+    vim.wo[state.win][0].number = false
+    vim.wo[state.win][0].relativenumber = false
+    vim.wo[state.win][0].wrap = false
     -- Hand focus straight back: the point is to watch the build, not to edit it.
     vim.api.nvim_set_current_win(prev)
   end

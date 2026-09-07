@@ -471,9 +471,12 @@ local function setup_buffer()
   vim.bo[buf].swapfile  = false
   vim.bo[buf].buflisted = false
   vim.bo[buf].filetype  = "nvfuzzy"
-  vim.wo.wrap = false
-  vim.wo.number = false
-  vim.wo.relativenumber = false
+  -- Window options, scoped to *this buffer in this window* (the [0][0] form):
+  -- setup_buffer() takes over the window you were in, and a plain `vim.wo`
+  -- would leave nowrap/nonumber on it for whatever is opened there next.
+  vim.wo[0][0].wrap = false
+  vim.wo[0][0].number = false
+  vim.wo[0][0].relativenumber = false
   pcall(vim.api.nvim_buf_set_name, buf, "nv: " .. (state and state.pattern or ""))
 
   state.results_tab = vim.api.nvim_get_current_tabpage()
