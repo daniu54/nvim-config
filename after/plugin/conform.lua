@@ -12,7 +12,14 @@ local EXPLODE_CMD = vim.fn.stdpath("config") .. "/scripts/html-explode.js"
 conform.setup({
     formatters_by_ft = {
         markdown = { "prettier" },
-        html = { "html_explode" },
+        -- Exploding is a mode a buffer is put into by :HtmlExplode, not the
+        -- default. Ordinary html formats the ordinary way; a buffer that was
+        -- explicitly exploded keeps being exploded by :w and <leader>=, which
+        -- is the only way the explosion survives a save -- a gentler formatter
+        -- would put it straight back together.
+        html = function(bufnr)
+            return vim.b[bufnr].html_exploded and { "html_explode" } or { "prettier" }
+        end,
         css = { "prettier" },
         javascript = { "prettier" },
         json = { "prettier" },
@@ -23,13 +30,8 @@ conform.setup({
         prettier = {
             command = prettier_cmd,
         },
-        -- html is exploded rather than merely formatted -- see
-        -- scripts/html-explode.js. It is also what :w runs, deliberately: a
-        -- gentler html formatter would undo the explosion on the next save,
-        -- and this one is idempotent, so the file stays as :HtmlExplode left
-        -- it. The cost is that every html buffer gets the exploded look, which
-        -- is the right default for reading minified markup and the wrong one
-        -- for hand-authoring a page.
+        -- Breaks html on every element -- see scripts/html-explode.js. Only
+        -- reached through :HtmlExplode, or on a buffer it has been run on.
         html_explode = {
             command = EXPLODE_CMD,
             stdin = true,
@@ -99,13 +101,36 @@ end
 -- is usually somewhere it was pasted -- a scratch buffer, a string in a source
 -- file -- so naming the formatter explicitly is the point: <leader>= would
 -- pick a formatter by filetype and there would be none, or the wrong one.
+--
+-- Succeeding puts the buffer into exploded mode, so a later :w or <leader>=
+-- keeps it exploded instead of quietly reassembling it. :HtmlExplode! leaves
+-- that mode and formats the buffer the ordinary way. The mode is buffer-local
+-- and so does not survive closing the file -- reopening an exploded file gives
+-- an ordinary html buffer, and saving it then reformats it normally.
+--
+-- A range does NOT set the mode: it is a surgical edit on a fragment, usually
+-- in a buffer that is not html at all, and putting the whole buffer into
+-- exploded mode on the strength of it would reformat everything else too.
 vim.api.nvim_create_user_command("HtmlExplode", function(opts)
+    local bufnr = vim.api.nvim_get_current_buf()
+
+    if opts.bang then
+        vim.b[bufnr].html_exploded = nil
+        conform.format({ timeout_ms = FORMAT_TIMEOUT_MS, lsp_fallback = false }, function(err)
+            if err then
+                vim.notify("HtmlExplode: " .. err, vim.log.levels.ERROR)
+            end
+        end)
+        return
+    end
+
     -- -range=-1 distinguishes "no range given" (count == -1) from a real one,
     -- which `-range` alone cannot do -- it defaults to the cursor line and
     -- would silently explode a single line instead of the buffer.
     if opts.count ~= -1 then
-        return explode_range(0, opts.line1, opts.line2)
+        return explode_range(bufnr, opts.line1, opts.line2)
     end
+
     conform.format({
         formatters = { "html_explode" },
         timeout_ms = FORMAT_TIMEOUT_MS,
@@ -113,6 +138,8 @@ vim.api.nvim_create_user_command("HtmlExplode", function(opts)
     }, function(err)
         if err then
             vim.notify("HtmlExplode: " .. err, vim.log.levels.ERROR)
+            return
         end
+        vim.b[bufnr].html_exploded = true
     end)
-end, { range = -1, desc = "Format html, breaking on every element" })
+end, { range = -1, bang = true, desc = "Format html, breaking on every element" })
