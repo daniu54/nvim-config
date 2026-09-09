@@ -107,6 +107,7 @@ local lines = {
   "     <CR>  open the file at that diff line   R  refresh       ",
   "     ]] / [[  next / previous commit   q  close               ",
   "     zM  fold to one line per commit   zR  unfold             ",
+  "     zc  fold the diff under the cursor (again: the file)     ",
   " ─────────────────────────────────────────────────────────── ",
   "  LSP  (Python/Zig — run :LspEnable or <leader>le first)      ",
   "   gd               go to definition                          ",

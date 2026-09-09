@@ -569,6 +569,60 @@ local REVIEW_DIR = '/tmp/git-reviews'
 -- per buffer here rather than rediscovered from the buffer's own name.
 local reviews = {}
 
+-- ── folds ───────────────────────────────────────────────────────────────────
+
+-- Headings fold at 1/2/3 and each fenced block folds at one level deeper than
+-- the heading it sits under, so `zc` inside a diff closes *that diff* and a
+-- second `zc` closes the file section around it.
+--
+-- It is computed for the whole buffer at once rather than as a per-line
+-- expression, because a single line cannot be classified on its own here:
+--   * a fence is variable-length (see fence_for — it is grown past the longest
+--     run inside the chunk), so the closing fence can only be recognised
+--     against the opening one
+--   * a diff of a markdown file contains fences and `#` headings of its own,
+--     and those must not be read as document structure
+-- Both need the state of the scan so far, so the scan is the answer. The result
+-- is cached against `changedtick`, which makes it one pass per edit rather than
+-- one per line.
+local function fold_levels(buf)
+  local st = reviews[buf] or {}
+  local tick = vim.b[buf].changedtick
+  if st.folds and st.folds.tick == tick then return st.folds.levels end
+
+  local levels, fence, head = {}, nil, 0
+  for i, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+    if fence then
+      -- Inside a chunk: everything belongs to the fence's fold, the closing
+      -- fence included, so the whole block collapses to its ```diff line.
+      levels[i] = head + 1
+      if line:match('^' .. fence .. '`*%s*$') then fence = nil end
+    else
+      local hashes = line:match('^(#+) ')
+      local open = line:match('^(```+)')
+      if hashes then
+        head = #hashes
+        levels[i] = '>' .. head
+      elseif open then
+        fence = open
+        levels[i] = '>' .. (head + 1)
+      else
+        levels[i] = head
+      end
+    end
+  end
+
+  if reviews[buf] then reviews[buf].folds = { tick = tick, levels = levels } end
+  return levels
+end
+
+-- 'foldexpr' is a vimscript string, so the function it calls has to be reachable
+-- from `v:lua`.
+function _G.__git_review_foldexpr()
+  local levels = fold_levels(vim.api.nvim_get_current_buf())
+  return levels[vim.v.lnum] or 0
+end
+
 local function jump()
   local st = reviews[vim.api.nvim_get_current_buf()]
   if not st then return end
@@ -754,10 +808,11 @@ function M.open(opts)
   vim.wo[win].number = false
   vim.wo[win].relativenumber = false
   vim.wo[win].conceallevel = 0
-  -- Folds on the markdown headings, all open: `zM` collapses to one line per
-  -- commit, which is the table of contents for the branch.
+  -- Folds on the markdown headings and on each fenced diff, all open: `zM`
+  -- collapses to one line per commit, which is the table of contents for the
+  -- branch, and `zc` on a diff line collapses just that diff.
   vim.wo[win].foldmethod = 'expr'
-  vim.wo[win].foldexpr = "getline(v:lnum)=~'^# ' ? '>1' : getline(v:lnum)=~'^## ' ? '>2' : getline(v:lnum)=~'^### ' ? '>3' : '='"
+  vim.wo[win].foldexpr = 'v:lua.__git_review_foldexpr()'
   vim.wo[win].foldlevel = 99
   vim.api.nvim_win_set_cursor(win, { 1, 0 })
 end

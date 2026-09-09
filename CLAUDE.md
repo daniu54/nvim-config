@@ -725,7 +725,7 @@ because it is text, so there is nothing to learn.
   that breaks the shape they are parsed back out of.
 - `<CR>` opens the file at the diff line under the cursor, in the window
   `:GitReview` was called from. `]]`/`[[` move by commit, `R` refreshes, `q`
-  closes, `zM` folds to one line per commit (headings drive the fold expr).
+  closes, `zM` folds to one line per commit.
 - **The window wraps** (`wrap` + `linebreak` + `breakindent`). A review is read,
   not scrolled sideways: prose paragraphs and long diff lines both stay on
   screen, and `breakindent` keeps a continued diff line under its own `+`/`-`
@@ -738,6 +738,17 @@ Things worth knowing:
   +/- highlighting costs nothing here. The fence is grown to one backtick longer
   than the longest run inside the chunk, because a diff of a markdown file
   contains fences of its own and a plain ` ``` ` would end the block mid-patch.
+- **Each fenced diff is a fold of its own**, one level below the `###` heading
+  it sits under, so `zc` inside a diff closes *that diff* and a second `zc`
+  closes the file section around it. The fold levels are computed for the whole
+  buffer in one scan and cached against `changedtick`, not decided per line by a
+  `getline()` expression the way they were at first — **a line here cannot be
+  classified on its own**. A fence is variable-length (see above), so the
+  closing one is only recognisable against the opening one; and a diff of a
+  markdown file carries fences and `#` headings of its own, which must not be
+  read as document structure. Both need the state of the scan so far. The
+  heading-only expression this replaced was also why `zc` anywhere inside a diff
+  used to collapse the entire file section — there was no smaller fold to close.
 - **Merges are excluded** (`--no-merges`): `git show` prints no diff for one
   anyway, and on a feature branch they are merges *from* the base bringing in
   other people's work, which is not what is under review. The header says so.
