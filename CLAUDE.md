@@ -640,12 +640,15 @@ no file of our own, because everything interesting here is the plugin's.
   on the `v0.9.3` tag pinned above; the parsers do, and those are already
   installed for the fences (`ensure_installed`). A language with no parser
   simply gets no context.
-- `max_lines = 4` with `trim_scope = 'outer'`: markdown nests four deep
-  routinely, and when it must be cut it is the *outermost* heading that goes —
-  the nearest section is the one you scrolled away from.
-- `separator = '─'` draws a rule under the context so it does not read as the
-  line above the cursor. It also means the context only appears once ≥ 2 lines
-  have scrolled off, which is when it starts being worth the space.
+- `max_lines = 2` with `trim_scope = 'outer'`: the innermost scope and the one
+  above it, no more. Markdown nests four deep routinely and the full `H1..H4`
+  stack is mostly window spent on headings you already know you are under, so
+  when it must be cut it is the *outermost* that goes.
+- **No `separator`.** The plugin can draw a rule under the context, and it
+  reads as a horizontal rule belonging to the document rather than as chrome.
+  The context window already has its own background (rose-pine sets
+  `TreesitterContext`), which is separation enough — and setting a separator
+  also delays the context until ≥ 2 lines have scrolled off.
 - `min_window_height = 20` — a short split cannot spare the lines.
 - **`[c` jumps to the context above** (count-aware). It displaces vim's
   diff-mode "previous change", which is unreachable here anyway: nothing in

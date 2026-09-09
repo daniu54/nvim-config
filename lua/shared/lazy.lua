@@ -190,19 +190,23 @@ require("lazy").setup({
         'nvim-treesitter/nvim-treesitter-context',
         config = function()
             require('treesitter-context').setup({
-                -- Markdown nests deeply (an H4 under H3 under H2 under H1 is
-                -- four context lines); cap it so the context never eats the
-                -- window, dropping the *outermost* headings first -- the
-                -- nearest section is the one you scrolled away from.
-                max_lines = 4,
+                -- Two lines only: the innermost heading/scope and the one
+                -- above it. Markdown nests four deep routinely and a full
+                -- H1..H4 stack is mostly window spent on headings you already
+                -- know you are under -- `outer` drops those first and keeps
+                -- the nearest section, which is the one you scrolled away
+                -- from.
+                max_lines = 2,
                 trim_scope = 'outer',
                 -- A long multi-line signature is not worth 20 lines of window.
                 multiline_threshold = 3,
-                -- Draws a rule under the context so it does not read as if it
-                -- were the line above the cursor. Also means the context only
-                -- appears once there are >= 2 lines scrolled off, which is
-                -- when it starts being useful anyway.
-                separator = '─',
+                -- No `separator` on purpose: it draws a full-width `---` rule
+                -- under the context, which reads as a horizontal rule in the
+                -- document rather than as chrome. The context window has its
+                -- own background (rose-pine sets `TreesitterContext`), and
+                -- that is separation enough. Setting it also delays the
+                -- context until >= 2 lines have scrolled off.
+
                 -- Don't bother in a window too short to spare the lines.
                 min_window_height = 20,
             })
