@@ -274,7 +274,7 @@ leading/trailing pair back off the span before deciding whether it is wrapped
 | `<leader>c` | `` `code` `` **in prose filetypes only** | Comment.nvim's visual line-comment toggle, in those buffers only |
 | `<leader>l` | `[text](url)` **in prose filetypes only**, cursor lands in the parens in insert mode | the `<leader>l…` prefix (`la` Copilot, `lr` Copilot Chat, `le` LspEnable), in those buffers only |
 | `gb` | toggle `- ` bullet list | Comment.nvim's blockwise-comment operator (`gb`/`gbc`); `<leader>C` still block comments |
-| `<C-CR>` (also `<leader>x`) | add a `[ ]` todo, or toggle `[ ]` ⇄ `[x]`; **prose filetypes only**, and in insert mode too | — |
+| `<leader>x` | add a `[ ]` todo, or toggle `[ ]` ⇄ `[x]`; **prose filetypes only** | — |
 
 **These overrides were a deliberate choice, made with the costs stated** —
 matching the Obsidian keys exactly was worth more than the builtins they
@@ -304,7 +304,7 @@ multibyte. Edits always apply the trailing delimiter before the leading one, so
 the start column stays valid. A mixed bullet selection normalises to
 all-bullets; only an all-bullet run is stripped.
 
-**`<C-CR>` — markdown todos.** One grammar covers every shape: indent, an
+**`<leader>x` — markdown todos.** One grammar covers every shape: indent, an
 optional list marker (`- `, `* `, `+ `, `1. `, `1) `), an optional `[ ]`/`[x]`
 box, then the text — so `[ ] buh`, `- [ ] buh`, `1. [ ] buh` and an indented
 bullet are all the same parse, and the indent and marker are left alone. A line
@@ -315,11 +315,15 @@ states, not three — removing a todo is `dd` or `u`, and a third state makes th
 common press ambiguous. Visual mode normalises like `gb` does: a line without a
 box gains one, and only an all-boxed run flips.
 
-It is prose-scoped for the same reason `<leader>c` and `<leader>l` are — `<CR>`
-is a contested key and nothing outside markdown wants a checkbox. **`<C-CR>` is
-distinct from `<CR>` only over the kitty keyboard protocol**, exactly like
-`<C-S-w>` in `remap.lua`: Windows Terminal speaks it, nvim enables it, tmux
-forwards it. `<leader>x` is the same command on a key that always arrives.
+It is prose-scoped for the same reason `<leader>c` and `<leader>l` are: nothing
+outside markdown wants a checkbox.
+
+**It was `<C-CR>` first, and that key does not work here.** `<C-CR>` is distinct
+from `<CR>` only over the kitty keyboard protocol, and while this stack does
+speak that protocol elsewhere — it is what makes `<C-S-w>` work in `remap.lua` —
+the chord never arrived, tested by hand. Don't put it back without checking that
+`<C-CR>` actually registers first (`:map <C-CR>` is not the test; pressing it
+in insert mode and seeing whether anything but a newline happens is).
 
 `<S-BS>` / `<C-BS>` are mapped to `<C-u>` alongside `<leader><BS>`, but most
 terminals (Windows Terminal included) send a plain `<BS>` for these, so they may

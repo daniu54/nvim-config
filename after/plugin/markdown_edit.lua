@@ -230,7 +230,7 @@ map("n", "gb", function() toggle_list(false) end, "Markdown: toggle bullet list 
 map("x", "gb", function() toggle_list(true) end, "Markdown: toggle bullet list on selection")
 
 
--- <C-CR> — add a markdown todo, or toggle the one that is already there.
+-- <leader>x — add a markdown todo, or toggle the one that is already there.
 --
 -- All the shapes worth supporting are one grammar: indent, an optional list
 -- marker (`- `, `* `, `+ `, `1. `, `1) `), an optional `[ ]`/`[x]` box, then the
@@ -330,16 +330,18 @@ local prose_filetypes = {
   markdown = true, text = true, pandoc = true, quarto = true, rmd = true,
 }
 
--- <C-CR> is prose-scoped for the same reason: it is a plain <CR> everywhere
--- else, and nothing outside a markdown buffer wants a checkbox. Note that
--- <C-CR> is a key distinct from <CR> only over the kitty keyboard protocol —
--- the same thing that makes <C-S-w> work in lua/shared/remap.lua. Windows
--- Terminal speaks it, nvim enables it, tmux forwards it; on a terminal that
--- does not, this never fires and <leader>x is the way in.
+-- <leader>x is prose-scoped for the same reason: nothing outside a markdown
+-- buffer wants a checkbox.
+--
+-- It was <C-CR> first, which is the obvious key for this and does not work.
+-- <C-CR> is distinct from <CR> only over the kitty keyboard protocol, and
+-- although this terminal stack does speak that protocol elsewhere (it is what
+-- makes <C-S-w> work in lua/shared/remap.lua), the chord never arrived —
+-- verified by hand. So the key is a <leader> one, which also means the mapping
+-- is normal and visual mode only: <leader> is a literal backslash in insert.
 local prose_maps = {
   { "<leader>c", function(v) toggle_surround("`", "`", v) end, "Markdown: toggle `code`" },
   { "<leader>l", function(v) toggle_link(v) end,               "Markdown: toggle [text](url)" },
-  { "<C-CR>",    function(v) toggle_todo(v) end,               "Markdown: add/toggle a todo", { "n", "x", "i" } },
   { "<leader>x", function(v) toggle_todo(v) end,               "Markdown: add/toggle a todo" },
 }
 
