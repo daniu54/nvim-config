@@ -10,6 +10,8 @@ local lines = {
   "                     -- file bufs only; opens netrw if last win ",
   "   <C-d> / <C-u>   scroll ½ page, cursor stays centred        ",
   "   n / N            next / prev search result (centred)       ",
+  "   [c               jump to the sticky context above          ",
+  "                     -- :TSContext toggle turns it off        ",
   " ─────────────────────────────────────────────────────────── ",
   "  FILES & BUFFERS                                             ",
   "   <leader>pv       open file explorer (netrw)                ",

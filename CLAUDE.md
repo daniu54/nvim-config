@@ -625,6 +625,34 @@ hand and both displace something cheap: `-` is up-a-line-to-first-non-blank
 and reindenting is now a visual selection plus `=`. `gt`/`gT` stay reversed, as
 `remap.lua` has them.
 
+## sticky context (nvim-treesitter-context)
+
+The enclosing function/class — and in markdown the enclosing **headings** —
+stay pinned to the top of the window once you scroll past them. It is
+`nvim-treesitter-context`, configured inline in `lua/shared/lazy.lua`; there is
+no file of our own, because everything interesting here is the plugin's.
+
+- **Markdown works out of the box**, which is the non-obvious part: the plugin
+  ships a context query per language and markdown's is `(section) @context`, so
+  a section's heading line sticks exactly the way a function signature does,
+  nested — `# doc` over `## markdown tables` over the paragraph you are in.
+- The queries are the *plugin's*, not nvim-treesitter's, so they do not depend
+  on the `v0.9.3` tag pinned above; the parsers do, and those are already
+  installed for the fences (`ensure_installed`). A language with no parser
+  simply gets no context.
+- `max_lines = 4` with `trim_scope = 'outer'`: markdown nests four deep
+  routinely, and when it must be cut it is the *outermost* heading that goes —
+  the nearest section is the one you scrolled away from.
+- `separator = '─'` draws a rule under the context so it does not read as the
+  line above the cursor. It also means the context only appears once ≥ 2 lines
+  have scrolled off, which is when it starts being worth the space.
+- `min_window_height = 20` — a short split cannot spare the lines.
+- **`[c` jumps to the context above** (count-aware). It displaces vim's
+  diff-mode "previous change", which is unreachable here anyway: nothing in
+  this config opens diff mode — `:GitReview` renders diffs as *text*.
+- `:TSContext toggle` (also `enable`/`disable`) turns it off; it is in the
+  cheatsheet under NAVIGATION.
+
 ## leaving terminal mode (`<C-S-w>`)
 
 `lua/shared/remap.lua`. A `:terminal` here runs tmux, and a tmux pane usually

@@ -181,6 +181,40 @@ require("lazy").setup({
         end,
     },
 
+    -- sticky context: the enclosing function/class -- and, in markdown, the
+    -- enclosing headings -- pinned to the top of the window while you scroll
+    -- past them. Ships its own queries per language (independent of the
+    -- nvim-treesitter version pinned above), markdown's being `(section)`, so
+    -- a heading sticks the same way a function signature does.
+    {
+        'nvim-treesitter/nvim-treesitter-context',
+        config = function()
+            require('treesitter-context').setup({
+                -- Markdown nests deeply (an H4 under H3 under H2 under H1 is
+                -- four context lines); cap it so the context never eats the
+                -- window, dropping the *outermost* headings first -- the
+                -- nearest section is the one you scrolled away from.
+                max_lines = 4,
+                trim_scope = 'outer',
+                -- A long multi-line signature is not worth 20 lines of window.
+                multiline_threshold = 3,
+                -- Draws a rule under the context so it does not read as if it
+                -- were the line above the cursor. Also means the context only
+                -- appears once there are >= 2 lines scrolled off, which is
+                -- when it starts being useful anyway.
+                separator = '─',
+                -- Don't bother in a window too short to spare the lines.
+                min_window_height = 20,
+            })
+            -- Jump up to the heading/signature currently stuck at the top.
+            -- `[c` is vim's diff-mode "previous change", which is unreachable
+            -- here anyway -- nothing in this config opens diff mode.
+            vim.keymap.set('n', '[c', function()
+                require('treesitter-context').go_to_context(vim.v.count1)
+            end, { silent = true, desc = 'Jump to the context above' })
+        end,
+    },
+
     -- obsidian notes integration
     {
         'epwalsh/obsidian.nvim',
