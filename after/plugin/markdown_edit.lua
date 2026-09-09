@@ -269,9 +269,14 @@ local function todo_line(line, want)
   return indent .. (marker or "") .. (want and "[x]" or "[ ]") .. after
 end
 
--- Normal and insert mode act on the current line; visual mode on every
--- non-blank selected line, normalised the way gb normalises a mixed bullet
--- selection: a line without a box gains one, and only an all-boxed run flips.
+-- Normal mode acts on the current line. Visual mode does one of two things,
+-- decided by what is in the selection:
+--   * it holds no checkbox at all — every non-blank line becomes one
+--   * it holds at least one — those boxes group-toggle (any unchecked checks
+--     them all, all checked unchecks them all) and everything else is untouched
+-- The second is the common press: a selection nearly always takes in a heading
+-- or a blank line, and those must not sprout checkboxes just because they were
+-- caught in the range.
 local function toggle_todo(visual)
   if not visual then
     local l = vim.fn.line(".")
@@ -288,26 +293,31 @@ local function toggle_todo(visual)
   local sl, el = vim.fn.getpos("'<")[2], vim.fn.getpos("'>")[2]
   local lines = vim.api.nvim_buf_get_lines(0, sl - 1, el, false)
 
-  local all_boxed, all_checked, any = true, true, false
+  -- What the selection already contains decides which of the two jobs this is.
+  local boxes, all_checked = 0, true
   for _, l in ipairs(lines) do
-    if l:match("%S") then
-      any = true
-      local _, _, box = parse_todo(l)
-      if not box then
-        all_boxed = false
-      elseif box:sub(2, 2) == " " then
-        all_checked = false
-      end
+    local _, _, box = parse_todo(l)
+    if box then
+      boxes = boxes + 1
+      if box:sub(2, 2) == " " then all_checked = false end
     end
   end
-  local want = (any and all_boxed) and (not all_checked) or nil
 
-  for i, l in ipairs(lines) do
-    if l:match("%S") then
+  if boxes == 0 then
+    -- Nothing to toggle, so this is the "turn these lines into todos" press.
+    for i, l in ipairs(lines) do
+      if l:match("%S") then lines[i] = todo_line(l, nil) end
+    end
+  else
+    -- A group toggle over the boxes that are *there*: one unchecked box checks
+    -- the whole group, an all-checked group unchecks. Lines that are not
+    -- checkboxes are left alone — a selection almost always spans a heading, a
+    -- paragraph or a blank line, and sprouting boxes on those is what made this
+    -- key useless on any selection that was not already all todos.
+    local want = not all_checked
+    for i, l in ipairs(lines) do
       local _, _, box = parse_todo(l)
-      -- In a mixed selection only the boxless lines change: the ones that are
-      -- already todos keep whatever state you put them in.
-      if box == nil or want ~= nil then lines[i] = todo_line(l, want) end
+      if box then lines[i] = todo_line(l, want) end
     end
   end
 

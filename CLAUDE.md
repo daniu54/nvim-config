@@ -312,8 +312,19 @@ with no box gains one *after* whatever marker is there; a line with no marker at
 all (prose, or empty) becomes `- [ ] `, because a bare `[ ] todo` is a shape
 worth keeping when you wrote one but not one worth creating. The toggle is two
 states, not three — removing a todo is `dd` or `u`, and a third state makes the
-common press ambiguous. Visual mode normalises like `gb` does: a line without a
-box gains one, and only an all-boxed run flips.
+common press ambiguous.
+
+**Visual mode does one of two jobs, decided by what is in the selection** —
+unlike `gb`, which normalises the whole range to bullets:
+
+- the selection holds **no** checkbox → every non-blank line becomes one
+- the selection holds **at least one** → those boxes **group-toggle** (one
+  unchecked box checks them all; an all-checked group unchecks them all) and
+  every other line is left untouched
+
+The second is the common press, and the untouched part is the point: a
+selection nearly always takes in a heading, a blank line or a paragraph, and
+those must not sprout checkboxes just for being caught in the range.
 
 It is prose-scoped for the same reason `<leader>c` and `<leader>l` are: nothing
 outside markdown wants a checkbox.
