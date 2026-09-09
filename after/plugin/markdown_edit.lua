@@ -229,6 +229,91 @@ end
 map("n", "gb", function() toggle_list(false) end, "Markdown: toggle bullet list on line")
 map("x", "gb", function() toggle_list(true) end, "Markdown: toggle bullet list on selection")
 
+
+-- <C-CR> — add a markdown todo, or toggle the one that is already there.
+--
+-- All the shapes worth supporting are one grammar: indent, an optional list
+-- marker (`- `, `* `, `+ `, `1. `, `1) `), an optional `[ ]`/`[x]` box, then the
+-- text. So a single parse covers `[ ] buh`, `- [ ] buh`, `1. [ ] buh` and an
+-- indented bullet alike, and the indent and the marker are simply left alone.
+--
+-- With no box on the line, one is inserted *after* whatever marker is there. A
+-- line with no marker at all — prose, or empty — becomes a `- [ ] ` bullet: a
+-- bare `[ ] todo` is a shape worth keeping when you have written one, but not
+-- one worth creating.
+--
+-- The toggle has two states, not three: `[ ]` ⇄ `[x]`. Removing a todo is `dd`
+-- or an undo, and a three-state cycle makes the common press ambiguous.
+local TODO_MARKERS = { "^([-*+]%s+)", "^(%d+[.)]%s+)" }
+
+local function parse_todo(line)
+  local indent, rest = line:match("^(%s*)(.*)$")
+  local marker
+  for _, pat in ipairs(TODO_MARKERS) do
+    marker = rest:match(pat)
+    if marker then break end
+  end
+  local body = marker and rest:sub(#marker + 1) or rest
+  local box, after = body:match("^(%[[ xX]%])(.*)$")
+  return indent, marker, box, after, body
+end
+
+-- The rewritten line. `want` is true to check, false to uncheck, nil to flip;
+-- a line with no box ignores it and gains an unchecked one.
+local function todo_line(line, want)
+  local indent, marker, box, after, body = parse_todo(line)
+  if not box then
+    return indent .. (marker or "- ") .. "[ ] " .. body
+  end
+  if want == nil then want = box:sub(2, 2) == " " end
+  return indent .. (marker or "") .. (want and "[x]" or "[ ]") .. after
+end
+
+-- Normal and insert mode act on the current line; visual mode on every
+-- non-blank selected line, normalised the way gb normalises a mixed bullet
+-- selection: a line without a box gains one, and only an all-boxed run flips.
+local function toggle_todo(visual)
+  if not visual then
+    local l = vim.fn.line(".")
+    local old = vim.fn.getline(l)
+    local new = todo_line(old, nil)
+    vim.api.nvim_buf_set_lines(0, l - 1, l, false, { new })
+    -- Keep the cursor on the same character of the text, not the same column.
+    local col = vim.api.nvim_win_get_cursor(0)[2] + (#new - #old)
+    pcall(vim.api.nvim_win_set_cursor, 0, { l, math.max(math.min(col, #new), 0) })
+    return
+  end
+
+  vim.cmd("normal! \27")
+  local sl, el = vim.fn.getpos("'<")[2], vim.fn.getpos("'>")[2]
+  local lines = vim.api.nvim_buf_get_lines(0, sl - 1, el, false)
+
+  local all_boxed, all_checked, any = true, true, false
+  for _, l in ipairs(lines) do
+    if l:match("%S") then
+      any = true
+      local _, _, box = parse_todo(l)
+      if not box then
+        all_boxed = false
+      elseif box:sub(2, 2) == " " then
+        all_checked = false
+      end
+    end
+  end
+  local want = (any and all_boxed) and (not all_checked) or nil
+
+  for i, l in ipairs(lines) do
+    if l:match("%S") then
+      local _, _, box = parse_todo(l)
+      -- In a mixed selection only the boxless lines change: the ones that are
+      -- already todos keep whatever state you put them in.
+      if box == nil or want ~= nil then lines[i] = todo_line(l, want) end
+    end
+  end
+
+  vim.api.nvim_buf_set_lines(0, sl - 1, el, false, lines)
+end
+
 -- Prose-only maps. These two keys are worth having in markdown but too costly
 -- to take globally, so they are scoped instead of overridden:
 --   <leader>c  is Comment.nvim's visual line-comment toggle everywhere else
@@ -245,17 +330,25 @@ local prose_filetypes = {
   markdown = true, text = true, pandoc = true, quarto = true, rmd = true,
 }
 
+-- <C-CR> is prose-scoped for the same reason: it is a plain <CR> everywhere
+-- else, and nothing outside a markdown buffer wants a checkbox. Note that
+-- <C-CR> is a key distinct from <CR> only over the kitty keyboard protocol —
+-- the same thing that makes <C-S-w> work in lua/shared/remap.lua. Windows
+-- Terminal speaks it, nvim enables it, tmux forwards it; on a terminal that
+-- does not, this never fires and <leader>x is the way in.
 local prose_maps = {
   { "<leader>c", function(v) toggle_surround("`", "`", v) end, "Markdown: toggle `code`" },
   { "<leader>l", function(v) toggle_link(v) end,               "Markdown: toggle [text](url)" },
+  { "<C-CR>",    function(v) toggle_todo(v) end,               "Markdown: add/toggle a todo", { "n", "x", "i" } },
+  { "<leader>x", function(v) toggle_todo(v) end,               "Markdown: add/toggle a todo" },
 }
 
 vim.api.nvim_create_autocmd("FileType", {
   callback = function(args)
     local prose = prose_filetypes[args.match]
     for _, spec in ipairs(prose_maps) do
-      local lhs, fn, desc = spec[1], spec[2], spec[3]
-      for _, m in ipairs({ "n", "x" }) do
+      local lhs, fn, desc, modes = spec[1], spec[2], spec[3], spec[4] or { "n", "x" }
+      for _, m in ipairs(modes) do
         if prose then
           vim.keymap.set(m, lhs, function() fn(m == "x") end,
             { buffer = args.buf, desc = desc, silent = true })

@@ -460,10 +460,16 @@ local table_maps = {
 -- markdown: an LSP hover float, a telescope preview and any plugin scratch
 -- window can all be `filetype=markdown` with `buftype=nofile`, and none of
 -- them wants <Tab> and <CR> rewired.
+--
+-- `b:markdown_table_off` is the opt-out for a buffer that is all three of those
+-- and still does not want the keys: :GitReview's document is an editable
+-- markdown file, but its <CR> opens the diff line under the cursor and that is
+-- worth more there than table editing.
 local function editable_markdown(buf)
   -- `== true`, not a bare `and` chain: a missing filetype key yields nil, and
   -- nil is not false when this is compared against the attached-maps flag.
   return (table_filetypes[vim.bo[buf].filetype]
+    and not vim.b[buf].markdown_table_off
     and vim.bo[buf].buftype == ''
     and vim.bo[buf].modifiable) == true
 end

@@ -238,6 +238,10 @@ than "filetype is markdown", and both narrowings are load-bearing:**
   hover float, a telescope preview and plugin scratch windows are all
   `filetype=markdown` on a `nofile` buffer, and none of them wants `<Tab>` and
   `<CR>` rewired.
+- `b:markdown_table_off` opts a buffer out even when it is all of the above.
+  `:GitReview`'s document is an editable markdown file that sets it, because
+  `<CR>` there opens the diff line under the cursor and that is worth more than
+  table editing.
 - Only maps this file actually set are removed again, tracked by the
   `b:markdown_table_maps` flag. The autocmd matches `FileType *` (like
   `markdown_edit.lua`, so a buffer whose filetype changes *away* from markdown
@@ -270,6 +274,7 @@ leading/trailing pair back off the span before deciding whether it is wrapped
 | `<leader>c` | `` `code` `` **in prose filetypes only** | Comment.nvim's visual line-comment toggle, in those buffers only |
 | `<leader>l` | `[text](url)` **in prose filetypes only**, cursor lands in the parens in insert mode | the `<leader>l…` prefix (`la` Copilot, `lr` Copilot Chat, `le` LspEnable), in those buffers only |
 | `gb` | toggle `- ` bullet list | Comment.nvim's blockwise-comment operator (`gb`/`gbc`); `<leader>C` still block comments |
+| `<C-CR>` (also `<leader>x`) | add a `[ ]` todo, or toggle `[ ]` ⇄ `[x]`; **prose filetypes only**, and in insert mode too | — |
 
 **These overrides were a deliberate choice, made with the costs stated** —
 matching the Obsidian keys exactly was worth more than the builtins they
@@ -298,6 +303,23 @@ byte of the last character, so it's extended with `vim.str_utf_end` to cover
 multibyte. Edits always apply the trailing delimiter before the leading one, so
 the start column stays valid. A mixed bullet selection normalises to
 all-bullets; only an all-bullet run is stripped.
+
+**`<C-CR>` — markdown todos.** One grammar covers every shape: indent, an
+optional list marker (`- `, `* `, `+ `, `1. `, `1) `), an optional `[ ]`/`[x]`
+box, then the text — so `[ ] buh`, `- [ ] buh`, `1. [ ] buh` and an indented
+bullet are all the same parse, and the indent and marker are left alone. A line
+with no box gains one *after* whatever marker is there; a line with no marker at
+all (prose, or empty) becomes `- [ ] `, because a bare `[ ] todo` is a shape
+worth keeping when you wrote one but not one worth creating. The toggle is two
+states, not three — removing a todo is `dd` or `u`, and a third state makes the
+common press ambiguous. Visual mode normalises like `gb` does: a line without a
+box gains one, and only an all-boxed run flips.
+
+It is prose-scoped for the same reason `<leader>c` and `<leader>l` are — `<CR>`
+is a contested key and nothing outside markdown wants a checkbox. **`<C-CR>` is
+distinct from `<CR>` only over the kitty keyboard protocol**, exactly like
+`<C-S-w>` in `remap.lua`: Windows Terminal speaks it, nvim enables it, tmux
+forwards it. `<leader>x` is the same command on a key that always arrives.
 
 `<S-BS>` / `<C-BS>` are mapped to `<C-u>` alongside `<leader><BS>`, but most
 terminals (Windows Terminal included) send a plain `<BS>` for these, so they may
@@ -649,6 +671,12 @@ because it is text, so there is nothing to learn.
 - `:GitReview 10` (a depth), `:GitReview v1.2` / `<branch>` (a base to take the
   merge base with), `:GitReview a..b` (a range verbatim). `<Tab>` completes refs.
 - `:GitReview!` opens a vsplit next to the code instead of a new tab.
+- **The document is editable, and two things in it are yours**: the
+  `- [ ] <path> has been reviewed` box under each file in `## All changes`, and
+  `//` comment lines written between a diff's closing fence and that box. Both
+  survive a re-render (see below). Autosave keeps them; prettier is kept off the
+  buffer with `b:no_autoformat`, because reflowing the document is the one thing
+  that breaks the shape they are parsed back out of.
 - `<CR>` opens the file at the diff line under the cursor, in the window
   `:GitReview` was called from. `]]`/`[[` move by commit, `R` refreshes, `q`
   closes, `zM` folds to one line per commit (headings drive the fold expr).
@@ -676,14 +704,44 @@ Things worth knowing:
   exists on the `+` side of a hunk records its new-file line number, counted
   from the `@@` header. Nothing is re-parsed on the jump, so the mapping cannot
   drift from what is on screen.
+- **A review carries forward.** Every render parses the *previous file* before
+  replacing it, and merges your boxes and comments into the new one. The change
+  detector is a **hash of the file's rendered diff**, nothing cleverer: a box
+  stays ticked while that diff is byte-identical, and the moment it is not — an
+  amend, a new commit, an edit in the working tree — it comes back unticked with
+  the newest commit in the range that touched the file and *that commit's* date:
+  `- [ ] a.txt has been reviewed (5c52dbe, 2026-09-09 at 10:41)`. A change with
+  no commit behind it yet reads `(uncommitted, <mtime>)`. Hashing the rendered
+  diff rather than comparing shas is what makes a rebase that did not touch a
+  file leave its tick alone.
+- **Comments are anchored on (section, path)** — `all`, `uncommitted` or
+  `commit:<short sha>` — so a comment written about one commit's diff does not
+  reattach to a different diff after an amend. When its file or commit is gone
+  the block is rescued into a `## Orphaned comments` section at the bottom
+  rather than deleted, and that section is parsed back on the next render too,
+  so it survives until you move it or delete it. Only the run of `//` lines
+  between the closing fence and the review box is yours; anything you write
+  *inside* a ```diff fence is regenerated.
+- **The previous file is moved aside on every render**, to
+  `<repo>-<branch>-revision-YYYY-MM-DD-HHMMSS.md` in the same directory, and the
+  new document links to it in its header. Seconds, not just the date, because
+  `R` refreshes a review several times an hour. Nothing prunes them.
+- **`b:markdown_table_off` is set on the buffer.** The document is now an
+  editable markdown file, which is exactly `markdown_table.lua`'s attach
+  condition — and its `<Tab>`/`<CR>` would shadow the `<CR>` that opens the diff
+  line under the cursor. The flag is that module's documented opt-out.
+- **`:GitReview` re-run from inside a review works**, which it did not before:
+  `repo_root()` answers `/tmp` from there, so `M.open` falls back to the root
+  stored per review buffer, then to `b:open_under_cursor_cwd` — which the
+  `BufReadPost` autocmd recovers from the document's own `Repo:` header, so it
+  works in a fresh nvim whose cwd is some other repo entirely.
 - **It is a real file, at `/tmp/git-reviews/<repo>-<branch>.md`**, not a
   `nofile` scratch buffer. It already *is* a markdown document, so being one on
   disk costs nothing and buys everything a file gets: reopen it later, diff two
   of them, page it from the shell, run `:ConvertToPdf` on it. One file per
-  repo+branch, overwritten on every render — so the reuse is the same as
-  `:Yanks`, a second `:GitReview` refreshes rather than stacking windows onto
-  stale copies of a branch that moves. It is `nomodifiable`, so autosave never
-  touches it.
+  repo+branch, re-rendered in place — so the reuse is the same as `:Yanks`, a
+  second `:GitReview` refreshes rather than stacking windows onto stale copies
+  of a branch that moves.
 - **Living in `/tmp` is what makes path resolution the interesting part**: every
   path in the document is relative to the *repo*, and the document is not in it.
   Two things follow, and both are load-bearing —

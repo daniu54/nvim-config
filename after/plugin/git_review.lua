@@ -5,13 +5,19 @@
 -- message explaining why. Every nvim review plugin out there (diffview.nvim,
 -- octo.nvim, gh-review.nvim, reviewthem.nvim) answers this with a *file tree
 -- plus a side-by-side pane*: a UI to drive. This answers it with a document:
--- one scratch markdown buffer holding every commit on the branch, its message,
--- and its per-file diffs as ```diff blocks — top to bottom, oldest commit
--- first, the way you would read a patch series in a mail client.
+-- one markdown file holding every commit on the branch, its message, and its
+-- per-file diffs as ```diff blocks — top to bottom, oldest commit first, the
+-- way you would read a patch series in a mail client.
 --
 -- The point of it being an ordinary buffer (the same argument as :Yanks in
 -- after/plugin/yanks.lua): `/`, `n`, visual mode, `yy`, folds and marks all
 -- work on it, because it is text. Nothing to learn.
+--
+-- It is also *writable*, and two things in it are the user's: the
+-- `- [ ] <path> has been reviewed` box under each file, and the `//` comments
+-- they write under a diff. Both are parsed back out of the previous file and
+-- merged into the next render — see "carrying a review forward" below — so the
+-- document accumulates a review across the many renders a moving branch needs.
 --
 -- ```diff fences are load-bearing: markdown's treesitter injection highlights
 -- the block as a diff, so +/- lines colour themselves with no work here.
@@ -240,19 +246,171 @@ local function aggregate(root, range)
   return out
 end
 
+-- ── carrying a review forward ───────────────────────────────────────────────
+--
+-- The document is regenerated from git on every run, but two things in it are
+-- *yours* and have to survive that: the `- [ ] … has been reviewed` boxes, and
+-- the `//` comment lines you write under a diff. So the previous file is parsed
+-- back before the new one is rendered, and the pieces are merged in.
+--
+-- The shape it reads is exactly the shape render() writes:
+--
+--   ### path (+n −m)
+--
+--   ```diff
+--   …                       <- regenerated every run; anything you write in
+--   ```                        here is yours to lose
+--
+--   // a comment            <- carried forward
+--   // another
+--
+--   - [ ] path has been reviewed
+--
+--   ### the next file       <- nothing between the box and here is carried
+--
+-- Comments are anchored on (section, path), where the section is `all`,
+-- `uncommitted` or `commit:<short sha>` — so an amended commit's comments
+-- orphan rather than reattaching to a diff they were not written about.
+--
+-- The diff *body* is hashed as it is parsed. That hash is the whole change
+-- detector: a file whose rendered diff is byte-identical to last time has not
+-- changed, whatever the commits underneath it did.
+
+-- section_key turns a `## …` heading back into the key its files were stored
+-- under. A commit heading is `## <short> <subject> (<date>)`.
+local function section_key(heading)
+  if heading == 'All changes' then return 'all' end
+  if heading == 'Uncommitted changes' then return 'uncommitted' end
+  if heading == 'Orphaned comments' then return 'orphaned' end
+  return 'commit:' .. (heading:match('^(%S+)') or heading)
+end
+
+local function parse_previous(path)
+  local prev = { comments = {}, review = {}, hash = {} }
+  if vim.fn.filereadable(path) == 0 then return prev end
+  local ok, lines = pcall(vim.fn.readfile, path)
+  if not ok then return prev end
+
+  local section, file, fence, body, comments
+
+  local function flush()
+    if section and file and comments and #comments > 0 then
+      prev.comments[section] = prev.comments[section] or {}
+      prev.comments[section][file] = comments
+    end
+    comments = nil
+  end
+
+  for _, l in ipairs(lines) do
+    if fence then
+      if l == fence then
+        if section == 'all' and file then
+          prev.hash[file] = vim.fn.sha256(table.concat(body, '\n'))
+        end
+        fence, body = nil, nil
+        -- Past the fence is where your comments live.
+        comments = {}
+      else
+        table.insert(body, l)
+      end
+    else
+      local open = l:match('^(`+)diff$')
+      if open then
+        fence, body = open, {}
+      elseif l:match('^#+ ') then
+        flush()
+        if l:match('^## ') then
+          section, file = section_key(l:sub(4)), nil
+        elseif l:match('^### ') then
+          -- Strip the `(+n −m)` counts and any `*(label)*` suffix back off.
+          file = l:sub(5):match('^(.-) %(%+%d+ ') or l:sub(5)
+          -- An orphan section has no diff to sit under, so its comments start
+          -- at the heading. Without this a rescued block would be rescued
+          -- exactly once and then dropped by the render after it.
+          comments = (section == 'orphaned') and {} or nil
+        else
+          section, file = nil, nil
+        end
+      elseif comments then
+        local c = l:match('^%s*(//.*)$')
+        local box, boxed = l:match('^%- %[([ xX])%] (.+) has been reviewed')
+        if c then
+          table.insert(comments, c)
+        elseif box then
+          prev.review[boxed] = box ~= ' '
+          flush()
+        elseif l:match('%S') then
+          flush()
+        end
+      end
+    end
+  end
+  flush()
+
+  return prev
+end
+
+-- changed_note names *what* unchecked a box: the newest commit in the range
+-- that touches the file, with its own commit date — because "this file moved
+-- under you" is only useful if it says which commit moved it. A file whose
+-- change is not in any commit yet is uncommitted, and the working tree's mtime
+-- is the closest thing it has to a timestamp.
+local function changed_note(root, range, path)
+  if range then
+    local out = git(root, { 'log', '-1', '--no-merges', '--format=%h\30%cd',
+      '--date=format:%Y-%m-%d at %H:%M', range, '--', path })
+    if out and vim.trim(out) ~= '' then
+      local sha, when = vim.trim(out):match('^(.-)\30(.+)$')
+      if sha then return (' (%s, %s)'):format(sha, when) end
+    end
+  end
+  local st = vim.uv.fs_stat(root .. '/' .. path)
+  return (' (uncommitted, %s)'):format(os.date('%Y-%m-%d at %H:%M', st and st.mtime.sec or os.time()))
+end
+
 -- ── rendering ───────────────────────────────────────────────────────────────
 
 -- render builds the document, and alongside it `index`: for each buffer line,
 -- the file and line in the working tree it corresponds to, so <CR> can jump.
-local function render(root, branch, range, label, commits, working, note)
+local function render(root, branch, range, label, commits, working, note, prev, rotated)
   local out, index = {}, {}
   local function put(line) table.insert(out, line) end
 
+  -- Which of the previous run's comment blocks have been re-emitted, so that
+  -- the ones whose file or commit is gone can be rescued at the bottom rather
+  -- than deleted by a re-render.
+  local used = {}
+
+  local function emit_comments(section, path)
+    local block = section and prev.comments[section] and prev.comments[section][path]
+    if not block then return end
+    used[section .. '\0' .. path] = true
+    put('')
+    for _, c in ipairs(block) do put(c) end
+  end
+
+  -- The review box. It stays ticked only while the file's rendered diff is
+  -- byte-identical to the one you ticked it against; the moment that changes —
+  -- an amend, a new commit, an edit in the working tree — it comes back
+  -- unticked, naming what changed it.
+  local function review_box(f, body)
+    local checked = prev.review[f.path] or false
+    local was = prev.hash[f.path]
+    local suffix = ''
+    if checked and was and was ~= vim.fn.sha256(table.concat(body, '\n')) then
+      checked, suffix = false, changed_note(root, range, f.path:match('[^ ]+$'))
+    end
+    put('')
+    put(('- [%s] %s has been reviewed%s'):format(checked and 'x' or ' ', f.path, suffix))
+  end
+
   -- emit_file writes one `### path (+a −b)` section and its fenced diff, and
   -- records, for every line that exists on the + side, which working-tree line
-  -- it is — the index <CR> jumps on.
-  local function emit_file(f, suffix)
-    put(('### %s (+%d −%d)%s'):format(f.path, f.added, f.removed, suffix or ''))
+  -- it is — the index <CR> jumps on. Your comments go after the fence, and the
+  -- review box (`## All changes` only) after those.
+  local function emit_file(f, opts)
+    opts = opts or {}
+    put(('### %s (+%d −%d)%s'):format(f.path, f.added, f.removed, opts.suffix or ''))
     put('')
     local fence = fence_for(f.lines)
     put(fence .. 'diff')
@@ -268,7 +426,41 @@ local function render(root, branch, range, label, commits, working, note)
       end
     end
     put(fence)
+    emit_comments(opts.section, f.path)
+    if opts.review then review_box(f, f.lines) end
     put('')
+  end
+
+  -- Anything the previous run held that this one had no place for. It is
+  -- re-emitted under a heading of its own so that a re-render cannot quietly
+  -- delete something you wrote — and parsed back out of that heading next time,
+  -- so it stays until you move it or delete it yourself.
+  local function emit_orphans()
+    local orphans = {}
+    for section, files in pairs(prev.comments) do
+      for path, block in pairs(files) do
+        if not used[section .. '\0' .. path] then
+          table.insert(orphans, { section = section, path = path, block = block })
+        end
+      end
+    end
+    if #orphans == 0 then return end
+    table.sort(orphans, function(a, b)
+      return (a.section .. '\0' .. a.path) < (b.section .. '\0' .. b.path)
+    end)
+
+    put('## Orphaned comments')
+    put('')
+    put('Comments from an earlier revision whose file or commit is no longer in this review — an amended commit, a reverted file. Nothing regenerates them; move them or delete them.')
+    put('')
+    for _, o in ipairs(orphans) do
+      -- An already-orphaned block keeps its heading verbatim, or the prefix
+      -- would grow by one section name on every render.
+      put('### ' .. (o.section == 'orphaned' and o.path or ('%s — %s'):format(o.section, o.path)))
+      put('')
+      for _, c in ipairs(o.block) do put(c) end
+      put('')
+    end
   end
 
   put(('# Branch %s'):format(branch))
@@ -277,6 +469,9 @@ local function render(root, branch, range, label, commits, working, note)
   -- also how a review reopened in a fresh nvim recovers the directory its
   -- relative paths are written against — see the BufReadPost autocmd below.
   put(('Repo: `%s`'):format(root))
+  if rotated then
+    put(('Previous revision: `%s`'):format(rotated))
+  end
 
   if #commits > 0 then
     put(('Contains %d commit%s (%s), merges excluded.')
@@ -304,7 +499,7 @@ local function render(root, branch, range, label, commits, working, note)
     put('## Uncommitted changes')
     put('')
     for _, f in ipairs(working) do
-      emit_file(f, ('  *(%s)*'):format(f.label))
+      emit_file(f, { suffix = ('  *(%s)*'):format(f.label), section = 'uncommitted' })
     end
   end
 
@@ -319,14 +514,19 @@ local function render(root, branch, range, label, commits, working, note)
     put(('The whole review as one diff — `%s` against the working tree, %d file%s, no commit boundaries.')
       :format(base, #net, #net == 1 and '' or 's'))
     put('')
+    -- This is the section you sign off on, so this is the section with the
+    -- boxes in it: one per file, ticked by you once you have read that file.
     for _, f in ipairs(net) do
-      emit_file(f)
+      emit_file(f, { section = 'all', review = true })
     end
   end
 
   -- With no range there was nothing to aggregate that the uncommitted section
   -- did not already show, so this is also the end of the document.
-  if #commits == 0 then return out, index end
+  if #commits == 0 then
+    emit_orphans()
+    return out, index
+  end
 
   for _, c in ipairs(commits) do
     local text = git(root, { 'show', '--format=', '--no-color', '--find-renames', c.sha }) or ''
@@ -344,9 +544,11 @@ local function render(root, branch, range, label, commits, working, note)
     put('')
 
     for _, f in ipairs(files) do
-      emit_file(f)
+      emit_file(f, { section = 'commit:' .. c.short })
     end
   end
+
+  emit_orphans()
 
   return out, index
 end
@@ -404,6 +606,27 @@ local function review_path(root, branch)
   return REVIEW_DIR .. '/' .. name .. '.md'
 end
 
+-- Every render moves the file it is about to replace aside, so the ticks and
+-- comments of each round survive as a dated snapshot next to the current one.
+-- Seconds, not just the date: `R` refreshes a review several times an hour.
+-- Nothing prunes these — they are in /tmp and the history is the point.
+local function revision_path(path)
+  return (path:gsub('%.md$', '')) .. '-revision-' .. os.date('%Y-%m-%d-%H%M%S') .. '.md'
+end
+
+-- The review buffer is editable now — the boxes and the comments are typed
+-- into it — so its unsaved state is the newest version of the review, and the
+-- next render reads the *file*. Flush it first, without autocmds: an explicit
+-- write would hand the document to prettier, and reflowing it is the one thing
+-- that can break the shape parse_previous reads back.
+local function flush_buf(path)
+  local buf = vim.fn.bufnr(path)
+  if buf == -1 or not vim.api.nvim_buf_is_loaded(buf) or not vim.bo[buf].modified then return end
+  pcall(function()
+    vim.api.nvim_buf_call(buf, function() vim.cmd('silent noautocmd write') end)
+  end)
+end
+
 local function ensure_buf(path)
   local buf = vim.fn.bufadd(path)
   vim.fn.bufload(buf)
@@ -411,6 +634,14 @@ local function ensure_buf(path)
   reviews[buf] = {}
   vim.bo[buf].swapfile = false
   vim.bo[buf].filetype = 'markdown'
+  -- The document is writable — the review boxes and the `//` comments are typed
+  -- into it, and autosave keeps them. Two things have to be kept off it:
+  --   * prettier, which reflows markdown and would break the exact shape
+  --     parse_previous reads the boxes and comments back out of
+  --   * markdown_table.lua's <Tab>/<CR>, since <CR> here opens the diff line
+  --     under the cursor
+  vim.b[buf].no_autoformat = true
+  vim.b[buf].markdown_table_off = true
   vim.api.nvim_create_autocmd('BufWipeout', {
     buffer = buf,
     callback = function() reviews[buf] = nil end,
@@ -432,9 +663,19 @@ local function ensure_buf(path)
 end
 
 function M.open(opts)
-  -- opts.root is set on a refresh: the review buffer sits outside the repo, so
-  -- repo_root() from there would resolve /tmp rather than the branch.
-  local root = opts.root or repo_root()
+  -- The review buffer sits in /tmp, outside the repository it describes, so
+  -- repo_root() from inside one answers nothing. Three fallbacks, in the order
+  -- they are trustworthy: the root a refresh passed back, the root this session
+  -- rendered the buffer against, and the one a review reopened in a fresh nvim
+  -- recovered from its own `Repo:` header. Only then the buffer's own path.
+  local cur = vim.api.nvim_get_current_buf()
+  local in_review = vim.api.nvim_buf_get_name(cur):find(REVIEW_DIR, 1, true) == 1
+  local root = opts.root
+    or (reviews[cur] or {}).root
+    -- A review reopened in a fresh nvim has no state table, but the BufReadPost
+    -- autocmd below has already read the root out of its `Repo:` header.
+    or (in_review and vim.b[cur].open_under_cursor_cwd or nil)
+    or repo_root()
   if not root then
     return vim.notify('not inside a git repository', vim.log.levels.ERROR)
   end
@@ -460,8 +701,19 @@ function M.open(opts)
     end
   end
 
-  local out, index = render(root, branch, range, label, commits, working, note)
+  -- The previous revision has to be read before it is replaced, and the buffer
+  -- written before it is read.
   local path = review_path(root, branch)
+  flush_buf(path)
+  local prev = parse_previous(path)
+
+  -- Named before the render so the new document can point back at it, and
+  -- renamed after it so a failed render leaves the old review in place.
+  local rotated = vim.fn.filereadable(path) == 1 and revision_path(path) or nil
+
+  local out, index = render(root, branch, range, label, commits, working, note, prev, rotated)
+
+  if rotated and not os.rename(path, rotated) then rotated = nil end
   local ok, werr = pcall(vim.fn.writefile, out, path)
   if not ok then
     return vim.notify(('could not write %s: %s'):format(path, werr), vim.log.levels.ERROR)
@@ -475,10 +727,13 @@ function M.open(opts)
   -- override that module documents for exactly this case.
   vim.b[buf].open_under_cursor_cwd = root
 
-  vim.bo[buf].modifiable = true
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, out)
-  vim.bo[buf].modifiable = false
-  vim.bo[buf].modified = false
+  -- Reload from the file rather than setting the lines by hand. The buffer is
+  -- writable and autosaved now, so it has to end up *stamped as in sync with
+  -- disk* — which is what BufReadPost gives it (see after/plugin/autosave.lua).
+  -- Setting the lines behind vim's back would leave the buffer looking older
+  -- than the file it was just rendered from, and the next keystroke would raise
+  -- an autosave conflict over a file only this command had touched.
+  vim.api.nvim_buf_call(buf, function() vim.cmd('silent! edit!') end)
 
   -- Show it. A vertical split for :GitReview! — a diff is wide, and a tall
   -- narrow window next to the code is often the better shape for reading one.

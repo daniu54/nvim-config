@@ -50,6 +50,12 @@ conform.setup({
         if vim.b[bufnr].autosave_in_progress then
             return
         end
+        -- A buffer whose exact line shape is load-bearing opts out entirely --
+        -- :GitReview's document is parsed back on the next run to recover the
+        -- review boxes and comments in it, and prettier reflows markdown.
+        if vim.b[bufnr].no_autoformat then
+            return
+        end
         return { timeout_ms = FORMAT_TIMEOUT_MS, lsp_fallback = false }
     end,
 })
