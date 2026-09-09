@@ -284,6 +284,8 @@ local lines = {
   "   zM / zR          fold all / unfold all                     ",
   "   zc / zo          close / open fold under cursor            ",
   "   zC / zO          close / open folds recursively            ",
+  "   v_zc / v_zo      close / open every fold that fits inside  ",
+  "                    the selection (nothing crossing its ends) ",
   "   zL               level N / term / Enter=1 — global         ",
   "   zl               level N / term / Enter=1 — cursor         ",
   " ─────────────────────────────────────────────────────────── ",

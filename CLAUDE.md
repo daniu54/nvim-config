@@ -625,6 +625,43 @@ hand and both displace something cheap: `-` is up-a-line-to-first-non-blank
 and reindenting is now a visual selection plus `=`. `gt`/`gT` stay reversed, as
 `remap.lua` has them.
 
+## folding a selection (`zc` / `zo` in visual mode)
+
+`lua/shared/remap.lua`. Select a span and press `zc`: **every fold that fits
+entirely inside the selection closes, and nothing else does.** `zo` opens the
+closed ones that fit. The selection is a boundary, not a hint — a fold reaching
+past either end is left alone, which is what makes "collapse this region" mean
+what it says in a nested document.
+
+**This overrides a builtin that does something different.** `:h zc` in visual
+mode closes *one level of all folds in the selected area*, and in a nested
+document that level is usually the wrong one: selecting two ` ```diff ` blocks
+inside a `:GitReview` section and pressing `zc` collapses the two `###` **file
+sections** around them — folds that reach well past both ends of the selection —
+rather than the two blocks that were selected. Verified before it was replaced.
+
+- `zc` closes the **largest** fold that fits, at every position along the
+  selection: selecting a whole section collapses to the section, not to each of
+  its pieces. Where nothing fits — a selection wholly inside one diff — nothing
+  closes and it says so, rather than falling back to the enclosing fold.
+- `zo` is the mirror and opens **one level**, so a fold nested inside the one
+  just opened keeps the state it had. Select a region, `zc`, `zo`, and you are
+  back where you started.
+- Normal-mode `zc`/`zo`/`zC`/`zO` are untouched; only the `x` (visual) maps
+  exist.
+
+**Extents come from driving vim's own fold commands and reading `foldclosed()`
+back**, not from working them out of `foldlevel()`. Two sibling folds at the
+same level are indistinguishable from one fold by `foldlevel` alone — the
+problem `is_fold_start` in the same file needs treesitter to solve — and
+`'foldexpr'` is a per-buffer string this cannot parse, which `:GitReview`
+already proves by setting its own. Closing a fold and asking where it went has
+neither problem and works under every foldmethod.
+
+Watch out when testing this by hand or in a script: **`j` counts a closed fold
+as one line**, so `V13j` over a buffer that already has folds closed selects far
+more than thirteen lines. `V<line>G` is the line-exact way to select a range.
+
 ## sticky context (nvim-treesitter-context)
 
 The enclosing function/class — and in markdown the enclosing **headings** —

@@ -522,6 +522,115 @@ vim.keymap.set("n", "zl", function()
   smart_fold(input, false)
 end, { desc = "Fold local: level N, term, or Enter=1" })
 
+-- Visual-mode zc/zo: fold the selected *region*, not what encloses it.
+--
+-- The builtin closes "one level of all folds in the selected area", and in a
+-- nested document that is almost always the wrong level: selecting two ```diff
+-- blocks inside a :GitReview section and pressing zc collapses the two `###`
+-- file sections around them — folds that reach well past both ends of the
+-- selection — rather than the two blocks that were selected.
+--
+-- These go by *containment* instead. zc closes the largest fold that fits
+-- entirely inside the selection, at every position along it; zo opens the
+-- closed ones that fit. Nothing reaching past either end is touched, so the
+-- selection is a boundary rather than a hint.
+--
+-- Extents come from driving vim's own fold commands and reading foldclosed()
+-- back, not from working them out of foldlevel(): two sibling folds at the same
+-- level are indistinguishable from one fold by foldlevel alone (the problem
+-- is_fold_start above needs treesitter to solve), and 'foldexpr' is a
+-- per-buffer string this cannot parse — :GitReview sets its own. Closing a fold
+-- and asking where it went has neither problem, and works under every
+-- foldmethod.
+
+-- Whichever way the selection was made, plus the whole of a closed fold sitting
+-- at either end — the way vim's own operators treat one.
+local function visual_range()
+  local s, e = vim.fn.line("v"), vim.fn.line(".")
+  if s > e then s, e = e, s end
+  local fs, fe = vim.fn.foldclosed(s), vim.fn.foldclosedend(e)
+  return (fs ~= -1) and fs or s, (fe ~= -1) and fe or e
+end
+
+local function fold_at(lnum, keys)
+  vim.fn.cursor(lnum, 1)
+  pcall(vim.cmd, "normal! " .. keys) -- E490 on a line with no fold
+end
+
+local function close_contained(s, e)
+  local l, n = s, 0
+  while l <= e do
+    if vim.fn.foldclosed(l) ~= -1 then
+      l = vim.fn.foldclosedend(l) + 1 -- already closed, and it fits or it doesn't
+    elseif vim.fn.foldlevel(l) == 0 then
+      l = l + 1
+    else
+      fold_at(l, "zc")
+      local cs, ce = vim.fn.foldclosed(l), vim.fn.foldclosedend(l)
+      if cs == -1 then
+        l = l + 1
+      elseif cs < s or ce > e then
+        fold_at(l, "zo") -- reaches outside the selection: put it back
+        l = l + 1
+      else
+        -- Then keep taking the parent while it still fits, so selecting a whole
+        -- section collapses to the section rather than to each of its pieces.
+        while true do
+          fold_at(l, "zc")
+          local ps, pe = vim.fn.foldclosed(l), vim.fn.foldclosedend(l)
+          if ps == cs and pe == ce then break end -- outermost already
+          if ps < s or pe > e then
+            fold_at(l, "zo")
+            break
+          end
+          cs, ce = ps, pe
+        end
+        n, l = n + 1, ce + 1
+      end
+    end
+  end
+  return n
+end
+
+local function open_contained(s, e)
+  local l, n = s, 0
+  while l <= e do
+    local cs = vim.fn.foldclosed(l)
+    if cs == -1 then
+      l = l + 1
+    else
+      local ce = vim.fn.foldclosedend(l)
+      if cs >= s and ce <= e then
+        fold_at(l, "zo")
+        n = n + 1
+      end
+      -- Past it either way: one level, so a fold nested inside the one just
+      -- opened keeps the state it had — the mirror of what zc closed.
+      l = ce + 1
+    end
+  end
+  return n
+end
+
+local function visual_fold(fn)
+  return function()
+    local s, e = visual_range()
+    -- Out of visual mode before moving the cursor, or every fold_at would drag
+    -- the selection along with it.
+    vim.cmd("normal! \27")
+    local n = fn(s, e)
+    vim.fn.cursor(s, 1)
+    if n == 0 then
+      vim.notify("no fold fits in lines " .. s .. "-" .. e, vim.log.levels.WARN)
+    end
+  end
+end
+
+vim.keymap.set("x", "zc", visual_fold(close_contained),
+  { desc = "Close every fold that fits inside the selection" })
+vim.keymap.set("x", "zo", visual_fold(open_contained),
+  { desc = "Open every closed fold that fits inside the selection" })
+
 -- Squirrel (.nut) uses C-style line comments; no treesitter grammar available
 vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
     pattern = "*.nut",
