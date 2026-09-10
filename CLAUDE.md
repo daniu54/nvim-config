@@ -268,9 +268,9 @@ leading/trailing pair back off the span before deciding whether it is wrapped
 | --- | --- | --- |
 | `~` | `~~strikethrough~~` | builtin `~` toggle-case (`g~` unaffected) |
 | `` ` `` | `` `code` `` | builtin `` ` `` jump-to-mark prefix |
-| `"` | `"quoted"` | builtin `"` register prefix |
-| `'` | `'quoted'` | builtin `'` jump-to-mark prefix |
-| `<leader>q` | `"quoted"` | — (leader-side alias for `"`) |
+| `<leader>"` | `"quoted"` | — |
+| `<leader>'` | `'quoted'` | — |
+| `<leader>q` | `"quoted"` | — (third spelling of `<leader>"`) |
 | `<leader>c` | `` `code` `` **in prose filetypes only** | Comment.nvim's visual line-comment toggle, in those buffers only |
 | `<leader>l` | `[text](url)` **in prose filetypes only**, cursor lands in the parens in insert mode | the `<leader>l…` prefix (`la` Copilot, `lr` Copilot Chat, `le` LspEnable), in those buffers only |
 | `gb` | toggle `- ` bullet list | Comment.nvim's blockwise-comment operator (`gb`/`gbc`); `<leader>C` still block comments |
@@ -278,15 +278,14 @@ leading/trailing pair back off the span before deciding whether it is wrapped
 
 **These overrides were a deliberate choice, made with the costs stated** —
 matching the Obsidian keys exactly was worth more than the builtins they
-displace. Don't "fix" them into a `<leader>` namespace. Two consequences are
-load-bearing and easy to mistake for bugs:
+displace. Don't "fix" them into a `<leader>` namespace. One consequence is
+load-bearing and easy to mistake for a bug:
 
-- **There is no jump-to-mark key left.** Both `` ` `` and `'` are taken. `m`
-  still sets marks and `:marks` still lists them; jumping needs `:normal!` or a
-  new binding.
-- **Typing a register prefix by hand no longer works** (`"ayy`, `"+p`). The
-  explicit maps cover the cases that matter: `<leader>Y`/`<leader>P` for the
-  system clipboard, `<leader>p`/`<leader>D` for the black hole.
+- **`` ` `` is not a mark-jump prefix here.** ``` `a ``` and ``` `` ``` are
+  gone; `'a` and `''` still work, since the quote wraps sit behind `<leader>`
+  rather than on the bare keys — that is the one place the Obsidian keys were
+  not taken verbatim, because the register prefix (`"ayy`, `"+p`) and the
+  remaining mark jump were worth more than two saved keystrokes.
 
 `<leader>c` and `<leader>l` are the two scoped exceptions: line-commenting is
 worth more in code than a code-inline wrap, and LSP/Copilot are not markdown

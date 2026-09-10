@@ -15,19 +15,18 @@
 -- These keys deliberately override vim builtins (chosen over a <leader>
 -- namespace so the Obsidian bindings transfer unchanged):
 --   ~   was: toggle case of the character under the cursor (g~ still works)
---   `   was: jump-to-mark prefix (`a, ``)
---   '   was: the other jump-to-mark prefix ('a, '') — with ` gone too, there
---       is no jump-to-mark key left at all
---   "   was: the register prefix ("ayy, "+p, "_d typed by hand) — the
---       explicit <leader>Y / <leader>P / <leader>p / <leader>D maps still
---       reach the system and black-hole registers
+--   `   was: jump-to-mark prefix (`a, ``) — ' is still free for the other one
 --   gb  was: Comment.nvim blockwise-comment operator — <leader>C still block
 --       comments a visual selection
 --
--- <leader>c (code) and <leader>l (link) are the exceptions: they are
--- buffer-local to prose filetypes, so Comment.nvim's line-comment toggle and
--- the <leader>l… LSP/Copilot prefix both survive in code. <leader>q duplicates
--- " deliberately, as a leader-side alias for the same double-quote wrap.
+-- The two quote wraps are the exception: they live on <leader>" and <leader>'
+-- rather than on the bare keys, so the register prefix ("ayy, "+p) and the '
+-- jump-to-mark prefix both keep working. <leader>q is a third spelling of the
+-- double-quote wrap.
+--
+-- <leader>c (code) and <leader>l (link) are scoped instead of overridden: they
+-- are buffer-local to prose filetypes, so Comment.nvim's line-comment toggle
+-- and the <leader>l… LSP/Copilot prefix both survive in code.
 
 -- Byte range of the WORD under the cursor, or nil when the cursor sits on
 -- whitespace. Returns 1-indexed inclusive columns.
@@ -139,19 +138,17 @@ for _, m in ipairs({ "n", "x" }) do
     "Markdown: toggle `code`")
 end
 
--- "quote"  (nothing to override — <leader>q was free)
+-- "quote" and 'quote'  (nothing to override — all three keys were free)
+--
+-- These used to be the bare " and ' keys, which cost the register prefix
+-- ("ayy, "+p) and the last jump-to-mark key, since ` is taken above. Behind
+-- <leader> they cost nothing and both builtins come back.
 for _, m in ipairs({ "n", "x" }) do
   map(m, "<leader>q", function() toggle_surround('"', '"', m == "x") end,
     'Markdown: toggle "quote"')
-end
-
--- "quote" and 'quote'  (override the builtin " register prefix and ' jump-to-
--- mark; with ` also taken above, no mark-jump key is left — use explicit maps
--- like <leader>Y / <leader>P for the system register)
-for _, m in ipairs({ "n", "x" }) do
-  map(m, '"', function() toggle_surround('"', '"', m == "x") end,
+  map(m, '<leader>"', function() toggle_surround('"', '"', m == "x") end,
     'Markdown: toggle "quote"')
-  map(m, "'", function() toggle_surround("'", "'", m == "x") end,
+  map(m, "<leader>'", function() toggle_surround("'", "'", m == "x") end,
     "Markdown: toggle 'quote'")
 end
 
