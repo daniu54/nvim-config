@@ -398,6 +398,37 @@ from the pane's application to its client, so the outer nvim sees it. zsh
 honours it too, which also stops it executing every line but the last of a
 multi-line paste. A program that never asked for it (`cat`) still gets raw text.
 
+## symbol path under the cursor (`<leader>ys`)
+
+`lua/shared/symbol_path.lua`, bound next to `<leader>yl` in `lua/shared/remap.lua`.
+Copies the path from the root of the tree down to the node under the cursor to
+the Windows clipboard: `body/div/span#main/ul/li/p:hello there world`.
+
+**It reads treesitter's tree, not an LSP document-symbol list or aerial's
+outline, and that is the whole point** — the case it exists for is markup
+nested twelve levels deep, and a `<div>` is not a document symbol, so an
+outline has nothing to say about it. The tree has every node, so the ancestry
+is always there; the work is choosing which ancestors earn a segment.
+
+- An ancestor is skipped unless it is an **element** (html/xml/jsx/vue/svelte —
+  named by its tag, plus `#id` when it has one, since two sibling `<div>`s are
+  otherwise indistinguishable and the id is the attribute meant to tell them
+  apart; classes are left out as noise), a **markdown section** (named by its
+  heading), a **css rule** (its selectors), a **json/yaml mapping entry** (its
+  key), or a node with a `name:` field whose *type* also looks structural
+  (function/class/method/struct/…). A `name:` field alone is too loose a filter:
+  grammars hang one on parameters and field accesses too.
+- The trailing `:text` is the **innermost element's own direct text child**,
+  truncated to 40 chars — so a `<div>` wrapping ten paragraphs is not labelled
+  with the first of them. Only markup gets it; `M.outer/inner` in lua ends at
+  the name.
+- **The parser is parsed before asking for the node.** `vim.treesitter.get_node`
+  reads the parsed tree and answers `nil` when there is none, so a buffer with a
+  parser attached but never parsed (no treesitter highlighting on it) would
+  otherwise be indistinguishable from a buffer with no parser at all.
+- Injections are followed (`ignore_injections = false`), so a cursor inside a
+  fenced code block in markdown gets that language's tree.
+
 ## clickable paths and URLs (`<CR>` in normal mode)
 
 `lua/shared/open_under_cursor.lua` makes whatever is under the cursor

@@ -327,6 +327,20 @@ vim.keymap.set("v", "<leader>yl", function()
   yank_path_with_lines(path .. ":" .. suffix)
 end, { desc = "Copy current file path with selected line range to clipboard" })
 
+-- <leader>ys: copy the treesitter path down to the symbol under the cursor,
+--   body/div/span#main/div/p:hello
+-- The point is deeply nested markup, where "which <div> am I in" is a question
+-- an LSP outline or aerial cannot answer — a div is not a document symbol.
+-- See lua/shared/symbol_path.lua for which nodes get a segment.
+vim.keymap.set("n", "<leader>ys", function()
+  local path, err = require("shared.symbol_path").path()
+  if not path then
+    vim.notify(err or "No symbol path", vim.log.levels.WARN)
+    return
+  end
+  yank_path_with_lines(path)
+end, { desc = "Copy symbol path under cursor to clipboard" })
+
 -- !: run a shell command; % is replaced with the current file's full path.
 -- Mirrors the netrw "!" mapping for regular file buffers.
 vim.keymap.set("n", "!", function()
