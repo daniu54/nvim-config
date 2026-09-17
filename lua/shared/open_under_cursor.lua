@@ -1,17 +1,22 @@
 -- Make paths and URLs in any buffer "clickable" with <CR> in normal mode.
 --
 -- One resolver, three consumers: <CR> (this file's map), `gx` and `<leader>gf`
--- in remap.lua. Everything WSL-specific lives here:
---   url          -> ~/bin/open-url (Firefox on the Windows side)
+-- in remap.lua.
+--   url          -> `open` (default browser)
 --   text file    -> nvim, in a tab (focus the tab it is already open in)
 --   directory    -> netrw, in a tab
---   binary file  -> explorer.exe /select, so the folder opens with it selected
+--   binary file  -> `open -R`, so Finder opens with it selected
 --
 -- Terminal buffers are covered for free: a global normal-mode map applies in a
 -- terminal buffer's normal mode too. The only extra work there is resolving
--- relative paths against the *shell's* cwd (/proc/<job pid>/cwd), not nvim's --
--- output scrolling past in a shell that has cd'd elsewhere is the main reason
--- this exists at all.
+-- relative paths against the *shell's* cwd, not nvim's -- output scrolling
+-- past in a shell that has cd'd elsewhere is the main reason this exists at
+-- all. That resolution still walks /proc/<pid>/... (ported from the WSL/Linux
+-- setup) to find the live shell cwd through tmux/nvim nesting, which macOS
+-- does not have — on this platform it silently falls back to nvim's own cwd
+-- instead of the shell's, in the nested-terminal case specifically. Not fixed
+-- here: rewriting the process-tree walk for macOS (ps/pgrep-based) is a
+-- separate, larger job than this office-pc pass covers.
 
 local tab_utils = require("shared.tab_utils")
 
@@ -303,23 +308,18 @@ local function is_text(path)
 end
 
 local function open_in_explorer(path)
-  local win = shell({ "wslpath", "-w", path })
-  if win == "" then
-    vim.notify("wslpath failed for " .. path, vim.log.levels.ERROR)
-    return
-  end
   if vim.fn.isdirectory(path) == 1 then
-    vim.fn.jobstart({ "explorer.exe", win }, { detach = true })
+    vim.fn.jobstart({ "open", path }, { detach = true })
   else
-    vim.fn.jobstart({ "explorer.exe", "/select," .. win }, { detach = true })
+    vim.fn.jobstart({ "open", "-R", path }, { detach = true })
   end
-  vim.notify("Explorer: " .. path)
+  vim.notify("Finder: " .. path)
 end
 
 function M.open(target)
   if target.kind == "url" then
-    vim.fn.jobstart({ vim.fn.expand("~/bin/open-url"), target.url }, { detach = true })
-    vim.notify("Firefox: " .. target.url)
+    vim.fn.jobstart({ "open", target.url }, { detach = true })
+    vim.notify("Browser: " .. target.url)
     return true
   end
 

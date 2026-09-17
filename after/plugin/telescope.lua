@@ -242,8 +242,8 @@ vim.keymap.set('n', '<leader>fb', builtin.buffers, { desc = 'Telescope: buffers'
 --   nvim -> nvim :terminal -> tmux (session "nvt-<pid>-<n>") -> zsh
 --
 -- All sessions share the one per-user tmux server, so `tmux attach -t <name>`
--- from any other Windows Terminal window reconnects to that shell — which is
--- what terminal-mode <C-t> does (open a new WT window attached here, then
+-- from any other Ghostty window reconnects to that shell — which is
+-- what terminal-mode <C-t> does (open a new Ghostty window attached here, then
 -- close this one). Splitting and new "windows" are tmux's job now: terminal
 -- mode <C-s> forwards the tmux "split pane" chord and <C-n> "new window",
 -- and the C-b prefix passes straight through for everything else.
@@ -407,21 +407,19 @@ end
 -- <C-t>T: open terminal in vertical split to the side
 vim.keymap.set('n', '<C-t>T', open_term_side, { desc = 'Open terminal in vertical split at context dir' })
 
--- <C-t>t: open a new *detached* Windows Terminal window at the context directory.
+-- <C-t>t: open a new *detached* Ghostty window at the context directory.
 -- The window-manager sibling of <C-t>T (which splits inside this nvim); it is the
--- `tw` zsh alias (`wt.exe -d "$(wslpath -w .)"`) inlined, since a non-interactive
--- shell would not see that alias.
+-- `tw` zsh alias (`open -na Ghostty --args --working-directory=...`) inlined, since
+-- a non-interactive shell would not see that alias.
 local function open_term_window()
   local dir = ctx_cwd()
-  local win_dir = vim.fn.system({ 'wslpath', '-w', dir }):gsub('%s+$', '')
-  if vim.v.shell_error ~= 0 or win_dir == '' then
-    vim.notify('wslpath failed for: ' .. dir, vim.log.levels.ERROR)
-    return
-  end
   -- detach: the window must outlive this nvim, and nvim must not wait on it
-  vim.fn.jobstart({ 'wt.exe', '-d', win_dir }, { detach = true })
+  vim.fn.jobstart(
+    { 'open', '-na', 'Ghostty', '--args', '--working-directory=' .. dir },
+    { detach = true }
+  )
 end
-vim.keymap.set('n', '<C-t>t', open_term_window, { desc = 'Open new Windows Terminal window at context dir' })
+vim.keymap.set('n', '<C-t>t', open_term_window, { desc = 'Open new Ghostty window at context dir' })
 
 -- Tab management (<C-f> chord, PageUp/PageDown) lives in after/plugin/tabs.lua.
 
@@ -447,7 +445,7 @@ vim.keymap.set('t', '<C-l>', term_send('\x0c'),  { desc = 'tmux: next window' })
 -- <C-q> is "close this pane", but the last pane needs its own handling. Killing
 -- it destroys the session, and with `detach-on-destroy off` (~/.tmux.conf) the
 -- client does not exit: it switches to the most recently active *other* session.
--- In the everyday terminal that is the point — the WT window survives. In a
+-- In the everyday terminal that is the point — the Ghostty window survives. In a
 -- <C-s> / <C-t>T split it is wrong: the tmux window goes away, the nvim split
 -- stays put and now shows an unrelated shell, so the split cannot be closed by
 -- pressing <C-q> harder. So when this is the session's last pane and the nvim
@@ -493,7 +491,7 @@ vim.keymap.set('t', '<C-q>', term_close_pane, { desc = 'tmux: close pane (last o
 -- buffer behind. If it was a split, close that window and drop the buffer —
 -- undoing the split is the only thing left to do with it. The last window in a
 -- tab is left alone: that is the everyday terminal, and closing it would quit
--- nvim out from under the WT window.
+-- nvim out from under the Ghostty window.
 vim.api.nvim_create_autocmd('TermClose', {
   callback = function(ev)
     if not vim.b[ev.buf].tmux_session then return end
@@ -558,11 +556,11 @@ vim.api.nvim_create_autocmd('TermOpen', {
   end,
 })
 
--- terminal-mode <C-t>: "fork" — open a new Windows Terminal window at this
+-- terminal-mode <C-t>: "fork" — open a new Ghostty window at this
 -- pane's live cwd. It boots the full stack fresh (zsh → nvim → :terminal →
 -- tmux → zsh, via the zshrc auto-launch), an independent session. This window
 -- is left completely untouched. Same action as normal-mode <C-t>t.
-vim.keymap.set('t', '<C-t>', open_term_window, { desc = 'Fork: new WT window at this pane cwd' })
+vim.keymap.set('t', '<C-t>', open_term_window, { desc = 'Fork: new Ghostty window at this pane cwd' })
 
 -- <C-o>: forward to terminal — lets shell/fzf/etc. receive it.
 vim.keymap.set('t', '<C-o>', function()
@@ -577,7 +575,7 @@ end, { desc = 'Forward <C-o> to terminal' })
 --   <leader><Esc>  — original binding; space (leader) was intercepted on every keypress while
 --                    nvim waited for the chord, causing visible input lag in the terminal.
 --   <C-Esc>        — Windows system shortcut (opens Start menu); intercepted at the OS level
---                    before Windows Terminal or nvim ever see the key.
+--                    before Ghostty or nvim ever see the key.
 --   <C-;>          — requires kitty keyboard protocol to be sent as a distinct chord; without it
 --                    the terminal just receives a bare ';'. Didn't work in practice.
 --   <S-Esc>        — same kitty keyboard protocol requirement as <C-;>; same failure mode.

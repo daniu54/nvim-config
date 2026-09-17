@@ -155,7 +155,7 @@ vim.api.nvim_create_autocmd("FileType", {
     -- yp: copy full path of file under cursor to Windows clipboard
     vim.keymap.set("n", "yp", function()
       local path = netrw_cursor_path()
-      vim.fn.system("clip.exe", path)
+      vim.fn.system("pbcopy", path)
       vim.notify("Copied: " .. path)
     end, { buffer = true })
 
@@ -268,7 +268,7 @@ vim.keymap.set("n", "gx", function()
   require("shared.open_under_cursor").open_under_cursor({ url_only = true })
 end, { desc = "Open URL under cursor" })
 
--- open path under cursor in a new nvim window (WSL → Windows Terminal).
+-- open path under cursor in a new nvim window (new Ghostty window).
 -- Same detection as <CR> (shared.open_under_cursor), different destination.
 vim.keymap.set("n", "<leader>gf", function()
   local ouc = require("shared.open_under_cursor")
@@ -279,8 +279,10 @@ vim.keymap.set("n", "<leader>gf", function()
   end
   local dir = vim.fn.isdirectory(target.path) == 1 and target.path
     or vim.fn.fnamemodify(target.path, ":h")
-  local win_dir = vim.fn.system("wslpath -w " .. vim.fn.shellescape(dir)):gsub("\n$", "")
-  vim.fn.jobstart({ "wt.exe", "-d", win_dir, "wsl.exe", "nvim", target.path })
+  vim.fn.jobstart(
+    { "open", "-na", "Ghostty", "--args", "--working-directory=" .. dir, "-e", "nvim", target.path },
+    { detach = true }
+  )
 end, { desc = "Open path under cursor in new window" })
 
 -- yp: copy full path of current file to Windows clipboard (mirrors netrw yp)
@@ -290,7 +292,7 @@ vim.keymap.set("n", "yp", function()
     vim.notify("No file", vim.log.levels.WARN)
     return
   end
-  vim.fn.system("clip.exe", path)
+  vim.fn.system("pbcopy", path)
   vim.notify("Copied: " .. path)
 end, { desc = "Copy current file path to clipboard" })
 
@@ -298,7 +300,7 @@ end, { desc = "Copy current file path to clipboard" })
 -- normal mode:  /my/file:30
 -- visual mode:  /my/file:30-42  (start-end of selection)
 local function yank_path_with_lines(text)
-  vim.fn.system("clip.exe", text)
+  vim.fn.system("pbcopy", text)
   vim.notify("Copied: " .. text)
 end
 
