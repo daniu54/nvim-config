@@ -124,8 +124,12 @@ vim.api.nvim_create_autocmd("FileType", {
     pcall(vim.keymap.del, "n", "<F1>", { buffer = true })
     vim.keymap.set("n", "g?", "<Cmd>he netrw-quickhelp<CR>", { buffer = true, desc = "netrw: quick help" })
 
-    -- <BS>: go up a directory (overrides the global quit/scroll map)
+    -- <BS>/h: go up a directory (<BS> overrides the global quit/scroll map).
+    -- h loses cursor-left, which is worth nothing in a listing where every
+    -- line is a name and the cursor sits on it anyway; h/l as out/in pairs
+    -- them with <CR> the way every other file tree does.
     vim.keymap.set("n", "<BS>", "<Plug>NetrwBrowseUpDir", { buffer = true, desc = "netrw: up a directory" })
+    vim.keymap.set("n", "h", "<Plug>NetrwBrowseUpDir", { buffer = true, desc = "netrw: up a directory" })
 
     -- i: toggle between the two listing styles worth having, instead of
     -- cycling all four. netrw's own `i` does (style + 1) % 4 over
@@ -192,7 +196,11 @@ vim.api.nvim_create_autocmd("FileType", {
     -- "test/kotlin/profilecreator" into one node. Collapsing back out stays
     -- dumb on purpose: an already-expanded directory just toggles closed one
     -- level, same as stock netrw, so backing out never skips levels.
-    vim.keymap.set("n", "<CR>", function()
+    --
+    -- `l` is the same thing, so h/l walk out of and into directories; on a
+    -- file it opens it, like <CR>. Cursor-right is no loss here for the same
+    -- reason cursor-left isn't (see h above).
+    local function netrw_enter()
       local browsecheck = vim.api.nvim_replace_termcodes("<Plug>NetrwLocalBrowseCheck", true, false, true)
       local path = netrw_cursor_path()
 
@@ -219,7 +227,10 @@ vim.api.nvim_create_autocmd("FileType", {
       local tab_utils = require("shared.tab_utils")
       if tab_utils.focus_if_open(path) then return end
       vim.api.nvim_feedkeys(browsecheck, "m", false)
-    end, { buffer = true, desc = "netrw: open file (focus existing tab); smart-dive single-child dir chains" })
+    end
+
+    vim.keymap.set("n", "<CR>", netrw_enter, { buffer = true, desc = "netrw: open file (focus existing tab); smart-dive single-child dir chains" })
+    vim.keymap.set("n", "l", netrw_enter, { buffer = true, desc = "netrw: descend into dir / open file" })
 
     -- \: open file in background tab (new tab, stay focused on netrw).
     -- If the file is already open in some tab, just focus that tab instead
