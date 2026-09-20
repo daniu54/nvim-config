@@ -513,3 +513,76 @@ api.nvim_create_autocmd('InsertLeave', {
 
 vim.api.nvim_create_user_command('TableFormat', function() reformat() end,
   { desc = 'Reflow the markdown table under the cursor' })
+
+-- ── The current cell's column header, as virtual text ───────────────────────
+--
+-- A wide table scrolls its header row off the top of the window, and then the
+-- cell you are typing in is a bare string with no idea what it is a value of.
+-- csvview.nvim answers that for csv/tsv with a sticky header plus a hover
+-- float (after/plugin/csvview.lua); this is the markdown equivalent, minus the
+-- float: the header of the column the cursor is in, drawn muted past the end
+-- of the line.
+--
+-- It is an **extmark**, so it is virtual text in the strict sense — not in the
+-- buffer, not in the file, not selectable, not yanked, invisible to `$`, to
+-- the formatter and to every other line-text reader in this file. That is why
+-- it can sit on a line this module rewrites on every keystroke without any
+-- coordination between the two: flush() replaces the line and nvim moves the
+-- mark, and the next cursor move redraws it anyway.
+--
+-- `eol` rather than `right_align`: `wrap` is on for every window here
+-- (lua/shared/set.lua), so the end of the line is always on screen, and
+-- right_align would be drawn *over* the tail of a long wrapped row.
+local hint_ns = api.nvim_create_namespace('markdown_table_header_hint')
+local hint_enabled = true
+
+-- Long headers are labels, not content — a 60-column one past the end of a
+-- table is noise, and the first few words identify the column anyway.
+local MAX_HINT = 40
+
+local function clear_hint(buf)
+  api.nvim_buf_clear_namespace(buf, hint_ns, 0, -1)
+end
+
+local function update_hint()
+  local buf = api.nvim_get_current_buf()
+  clear_hint(buf)
+  if not hint_enabled or not editable_markdown(buf) then return end
+
+  -- parse() bails on the cheap `^%s*|` test before it scans for fences, so the
+  -- cost of this on a CursorMoved is one line read outside a table.
+  local t = parse()
+  -- No delimiter row yet means the first line is still being typed and there
+  -- is no header to name. On the header and `---` rows the label would only
+  -- repeat the cell the cursor is already sitting in.
+  if not t or not t.delim or t.row <= t.delim then return end
+
+  local header = t.rows[t.delim - 1][t.col]
+  if not header or header == '' then return end
+  if strwidth(header) > MAX_HINT then
+    header = vim.fn.strcharpart(header, 0, MAX_HINT - 1) .. '…'
+  end
+
+  api.nvim_buf_set_extmark(buf, hint_ns, t.first + t.row - 2, 0, {
+    virt_text = { { '  ← ' .. header, 'MarkdownTableHeaderHint' } },
+    virt_text_pos = 'eol',
+    hl_mode = 'combine',
+  })
+end
+
+api.nvim_create_autocmd({ 'CursorMoved', 'CursorMovedI', 'InsertLeave' }, {
+  callback = update_hint,
+})
+
+-- The mark is buffer-local but the cursor is not: leaving the buffer or the
+-- window would otherwise leave a stale label behind on the row the cursor used
+-- to be on.
+api.nvim_create_autocmd({ 'BufLeave', 'WinLeave' }, {
+  callback = function(args) clear_hint(args.buf) end,
+})
+
+api.nvim_create_user_command('TableHeaderHint', function()
+  hint_enabled = not hint_enabled
+  update_hint()
+  vim.notify('Markdown table header hint ' .. (hint_enabled and 'on' or 'off'))
+end, { desc = "Toggle the column-header label on the cursor's table cell" })

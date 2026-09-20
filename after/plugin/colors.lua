@@ -59,3 +59,8 @@ if vim.env.NVIM then
   vim.api.nvim_set_hl(0, "Visual", { bg = "#0d3a0d" })
   vim.api.nvim_set_hl(0, "Cursor", { fg = "#000000", bg = "#39ff14" })
 end
+
+-- The current cell's column header, drawn as virtual text past the end of the
+-- line in a markdown table (after/plugin/markdown_table.lua). Muted and italic
+-- so it reads as chrome rather than as a cell that ran off the table.
+vim.api.nvim_set_hl(0, "MarkdownTableHeaderHint", { fg = "#6e6a86", italic = true }) -- rose-pine muted

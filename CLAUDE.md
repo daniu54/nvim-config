@@ -307,6 +307,24 @@ table (a lone `| header |` line, invisible to the grammar) is editable.
 The cost is that markdown *highlighting* still goes flat over a table with an
 empty row — same parser — and comes back once the row has content.
 
+**The column header of the cell the cursor is in is drawn past the end of the
+line**, muted (`MarkdownTableHeaderHint` in `after/plugin/colors.lua`), as
+`  ← name`. It is the markdown answer to what csvview.nvim's sticky header and
+`after/plugin/csvview.lua`'s hover float do for csv/tsv: a table wide or long
+enough to scroll its header row off the window leaves the cell you are typing
+in as a bare string with nothing saying what it is a value of.
+
+It is an **extmark**, so it is virtual text in the strict sense — not in the
+buffer, not in the file, not selectable, not yanked, invisible to `$` and to
+every line-text reader in this module. That is what lets it sit on a line the
+table code rewrites on every keystroke with no coordination between the two:
+`flush()` replaces the line, nvim moves the mark, and the next cursor move
+redraws it regardless. `eol` rather than `right_align`, because `wrap` is on
+for every window here (`lua/shared/set.lua`) so the end of the line is always
+on screen, while `right_align` would be drawn over the tail of a long wrapped
+row. Nothing is shown on the header row, on the `---` row, in a table with no
+delimiter row yet, or for an empty header cell; `:TableHeaderHint` toggles it.
+
 `<Tab>`, `<S-Tab>` and `<CR>` are nvim-cmp's keys and a buffer-local map
 shadows a global one, so each handler hands the key back to cmp when the
 completion menu is open, mirroring `after/plugin/cmp.lua` (including that
