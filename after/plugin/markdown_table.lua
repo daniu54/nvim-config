@@ -520,8 +520,8 @@ vim.api.nvim_create_user_command('TableFormat', function() reformat() end,
 -- cell you are typing in is a bare string with no idea what it is a value of.
 -- csvview.nvim answers that for csv/tsv with a sticky header plus a hover
 -- float (after/plugin/csvview.lua); this is the markdown equivalent, minus the
--- float: the header of the column the cursor is in, drawn muted past the end
--- of the line.
+-- float: the header of the column the cursor is in, drawn muted right after
+-- the cell's own text — `12 (age)`.
 --
 -- It is an **extmark**, so it is virtual text in the strict sense — not in the
 -- buffer, not in the file, not selectable, not yanked, invisible to `$`, to
@@ -530,9 +530,13 @@ vim.api.nvim_create_user_command('TableFormat', function() reformat() end,
 -- coordination between the two: flush() replaces the line and nvim moves the
 -- mark, and the next cursor move redraws it anyway.
 --
--- `eol` rather than `right_align`: `wrap` is on for every window here
--- (lua/shared/set.lua), so the end of the line is always on screen, and
--- right_align would be drawn *over* the tail of a long wrapped row.
+-- `inline` rather than `eol`: the label belongs to one cell, so it is drawn
+-- in that cell rather than at the far end of a row of five. The cost is that
+-- inline virtual text *pushes the rest of the row right* — the cell borders
+-- past the cursor no longer line up with the rows above and below while the
+-- label is up, and they snap back the moment the cursor leaves. That is a
+-- deliberate trade, and the reason the label is short and parenthesised: it
+-- has to read as an annotation on the value, not as more table.
 local hint_ns = api.nvim_create_namespace('markdown_table_header_hint')
 local hint_enabled = true
 
@@ -542,6 +546,24 @@ local MAX_HINT = 40
 
 local function clear_hint(buf)
   api.nvim_buf_clear_namespace(buf, hint_ns, 0, -1)
+end
+
+-- The byte column (0-based, for an extmark) just past the text of cell `col`
+-- on this line — the cell's own content, not the padding the reflow put after
+-- it, so the label sits against the value. An empty cell gets the position one
+-- space in from its `|`, so the label does not end up welded to the border.
+local function cell_text_end(line, col)
+  local pipes, i = {}, 1
+  while true do
+    local at = line:find('|', i, true)
+    if not at then break end
+    if line:sub(at - 1, at - 1) ~= '\\' then pipes[#pipes + 1] = at end
+    i = at + 1
+  end
+  local from = (pipes[col] or 0) + 1
+  local to = (pipes[col + 1] or #line + 1) - 1
+  local text = line:sub(from, to):gsub('%s+$', '')
+  return from - 1 + math.max(#text, 1)
 end
 
 local function update_hint()
@@ -563,9 +585,10 @@ local function update_hint()
     header = vim.fn.strcharpart(header, 0, MAX_HINT - 1) .. '…'
   end
 
-  api.nvim_buf_set_extmark(buf, hint_ns, t.first + t.row - 2, 0, {
-    virt_text = { { '  ← ' .. header, 'MarkdownTableHeaderHint' } },
-    virt_text_pos = 'eol',
+  local lnum = t.first + t.row - 1
+  api.nvim_buf_set_extmark(buf, hint_ns, lnum - 1, cell_text_end(get_line(lnum), t.col), {
+    virt_text = { { ' (' .. header .. ')', 'MarkdownTableHeaderHint' } },
+    virt_text_pos = 'inline',
     hl_mode = 'combine',
   })
 end
