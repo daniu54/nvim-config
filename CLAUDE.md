@@ -773,37 +773,33 @@ Watch out when testing this by hand or in a script: **`j` counts a closed fold
 as one line**, so `V13j` over a buffer that already has folds closed selects far
 more than thirteen lines. `V<line>G` is the line-exact way to select a range.
 
-## scrolling with the cursor centred (`zj` / `zk`)
+## scrolling with the cursor centred (`<C-j>` / `<C-k>`)
 
-`lua/shared/remap.lua`. `zj` moves down a line and recentres, `zk` up — `jzz`
-and `kzz`, with a count (`5zj`). Then they **stay**: bare `j` and `k` keep
-scrolling recentred until you press anything else, which leaves the submode
-and runs normally. `<Down>`/`<Up>` work in it too, `<Esc>` leaves quietly.
+`lua/shared/remap.lua`. `<C-j>` moves down a line and recentres, `<C-k>` up —
+`jzz` and `kzz`, count-aware (`5<C-j>`). Two lines of config, no machinery.
 
-**The ask was to hold `z` and tap j/k, the way ctrl is held, and a terminal
-cannot deliver that.** `z` is not a modifier: holding it sends a repeating
-stream of `z` characters, so nvim sees `zzzzzj` and has no idea the key is
-still down. (This stack *does* speak the kitty keyboard protocol — it is what
-makes `<C-S-w>` work — but that reports key-up for modifiers, not for ordinary
-letters.) The sticky submode is the same ergonomics without the impossible
-part: one `zj` to enter, then j/k as long as you like.
+**Ctrl is a real modifier, and that is the whole point of the key choice.**
+Hold it, hold `j`, and the terminal's own key repeat scrolls the file
+continuously with the cursor pinned to the middle — which is the behaviour
+that was wanted. A letter prefix cannot do it: `z` is not a modifier, so
+holding `z` sends a repeating stream of `z` characters and nvim sees
+`zzzzzj`, with no way to know the key is still down. (This stack does speak
+the kitty keyboard protocol — it is what makes `<C-S-w>` work — but that
+reports key-up for modifiers, not for ordinary letters.)
 
-- **It is a blocking `getcharstr` loop, not a pair of temporary `j`/`k`
-  mappings.** Mappings are the other way to write this, and they have to be
-  torn down on every exit path — another key, an error, `<C-c>`, a mode
-  change — where a blind `keymap.del` would remove a `j` or `k` that was
-  never ours if something else mapped them in the meantime. The loop owns its
-  own lifetime: when it returns there is nothing to clean up.
-- The exit key is handed back with `nvim_feedkeys(ch, 'mt')` — remapped and
-  treated as typed — so leaving the submode costs nothing: `:` opens the
-  command line, `G` goes to the end, `<leader>x` still ticks a checkbox.
-- The screen is `redraw`n at the top of each iteration, because nothing else
-  will while the loop holds the main thread.
-- **This displaces the builtin `zj`/`zk` fold motions** (to the start of the
-  next fold, to the end of the previous one). They are kept on `zJ`/`zK`,
-  which were unused.
-- Visual mode gets the plain `jzz`/`kzz` and no submode — a blocking loop
-  inside a selection would swallow the keys that extend it.
+This was first written on `zj`/`zk` with a sticky submode behind it: a
+blocking `getcharstr` loop where bare `j`/`k` kept scrolling until any other
+key, which was then fed back. It worked, and it was deleted anyway — it
+swallowed the keypress after the last scroll, it had to hold the main thread
+and `redraw` by hand, and all of it existed to emulate a held modifier. Once
+the keys move to an actual modifier there is nothing left to write. Don't put
+it back.
+
+The displaced builtins are close to free: normal-mode `<C-j>` is `<NL>`, a
+synonym for `j`, and `<C-k>` is unmapped outside insert mode, where digraphs
+live and where these are deliberately not mapped. Nothing else in this config
+or in tmux binds either. The builtin `zj`/`zk` fold motions stay where they
+are.
 
 ## sticky context (nvim-treesitter-context)
 
