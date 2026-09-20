@@ -288,10 +288,34 @@ Things worth knowing:
 behaviours: typing `| name | age |` and pressing `<CR>` (or `<Tab>`) writes the
 `| --- | --- |` row and makes it a real table; `<Tab>` moves right and *creates*
 a column when there is none; `<CR>` moves to the next row, creating it, and on
-an empty last row drops out of the table instead — that is the way out. Plus
-`<A-h/l>` `<A-k/j>` insert a column/row, `<A-S-…>` move one, `<A-d>` deletes a
-column, `<A-a>` cycles alignment, `<A-t>` inserts a fresh table, `:TableFormat`
-reflows. Everything reflows on those keys and on `InsertLeave`.
+an empty last row drops out of the table instead — that is the way out. The
+arrows walk the cells (see below). Everything reflows on those keys and on
+`InsertLeave`.
+
+**Row and column surgery is commands, not keys**, all completing off
+`:Table<Tab>`:
+
+| command | does |
+| --- | --- |
+| `:TableCreate` | a fresh 2×2 table here |
+| `:TableColumnCreate [right\|left]` | insert a column beside the cursor |
+| `:TableColumnDelete` | delete this column (refuses the last one) |
+| `:TableColumnMove [right\|left]` | swap this column with its neighbour |
+| `:TableRowCreate [below\|above]` | insert a row |
+| `:TableRowDelete` | delete this row (refuses the header) |
+| `:TableRowMove [below\|above]` | swap this row with its neighbour |
+| `:TableAlign [none\|left\|center\|right]` | set this column's alignment, or cycle with no argument |
+| `:TableFormat` | reflow |
+
+Each takes an optional direction, so the common case is a bare command, and
+`<Tab>` completes the words. **These were `<A-h/j/k/l>`, `<A-S-…>`, `<A-d>`,
+`<A-a>` and `<A-t>`** — a buffer-local chord each — and they moved because of
+how often they are actually reached for: inserting a column happens a few times
+a document, not a few times a minute, and a chord used that rarely is one you
+look up anyway. It also hands five Alt chords back to the things that wanted
+them inside a markdown buffer: `<A-h/j/k/l>` is tmux's pane movement and
+`<A-a>`/`<A-l>` are Copilot's accept keys, all of which the table maps were
+shadowing. `:TableRowDelete` is new — there was no key for it.
 
 **It is written against the line text, not treesitter, and deliberately does
 not use table-nvim** (SCJangra/table-nvim — the one plugin that does this job).

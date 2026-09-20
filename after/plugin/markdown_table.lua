@@ -487,75 +487,6 @@ local table_maps = {
     if cmp_handled('confirm') then return end
     if not next_row() then feed('<CR>') end
   end, 'Table: next row (creates one past the last; empty row leaves the table)' },
-
-  { { 'n' }, '<A-l>', op(function(t)
-    insert_column(t, t.col + 1)
-    return t.row, t.col + 1
-  end), 'Table: insert column right' },
-
-  { { 'n' }, '<A-h>', op(function(t)
-    insert_column(t, t.col)
-    return t.row, t.col
-  end), 'Table: insert column left' },
-
-  { { 'n' }, '<A-j>', op(function(t)
-    local at = math.max(t.row + 1, t.delim + 1)
-    table.insert(t.rows, at, blank_row(t))
-    return at, 1
-  end), 'Table: insert row below' },
-
-  { { 'n' }, '<A-k>', op(function(t)
-    local at = math.max(t.row, t.delim + 1)
-    table.insert(t.rows, at, blank_row(t))
-    return at, 1
-  end), 'Table: insert row above' },
-
-  { { 'n' }, '<A-d>', op(function(t)
-    if t.ncols < 2 then return t.row, t.col end
-    for _, row in ipairs(t.rows) do table.remove(row, t.col) end
-    table.remove(t.aligns, t.col)
-    t.ncols = t.ncols - 1
-    return t.row, math.min(t.col, t.ncols)
-  end), 'Table: delete column' },
-
-  { { 'n' }, '<A-S-l>', op(function(t)
-    if t.col >= t.ncols then return t.row, t.col end
-    for _, row in ipairs(t.rows) do row[t.col], row[t.col + 1] = row[t.col + 1], row[t.col] end
-    t.aligns[t.col], t.aligns[t.col + 1] = t.aligns[t.col + 1], t.aligns[t.col]
-    return t.row, t.col + 1
-  end), 'Table: move column right' },
-
-  { { 'n' }, '<A-S-h>', op(function(t)
-    if t.col < 2 then return t.row, t.col end
-    for _, row in ipairs(t.rows) do row[t.col], row[t.col - 1] = row[t.col - 1], row[t.col] end
-    t.aligns[t.col], t.aligns[t.col - 1] = t.aligns[t.col - 1], t.aligns[t.col]
-    return t.row, t.col - 1
-  end), 'Table: move column left' },
-
-  { { 'n' }, '<A-S-j>', op(function(t)
-    if t.row <= t.delim or t.row >= #t.rows then return t.row, t.col end
-    t.rows[t.row], t.rows[t.row + 1] = t.rows[t.row + 1], t.rows[t.row]
-    return t.row + 1, t.col
-  end), 'Table: move row down' },
-
-  { { 'n' }, '<A-S-k>', op(function(t)
-    if t.row <= t.delim + 1 then return t.row, t.col end
-    t.rows[t.row], t.rows[t.row - 1] = t.rows[t.row - 1], t.rows[t.row]
-    return t.row - 1, t.col
-  end), 'Table: move row up' },
-
-  { { 'n' }, '<A-a>', op(function(t)
-    local current = t.aligns[t.col] or 'none'
-    for i, name in ipairs(alignments) do
-      if name == current then
-        t.aligns[t.col] = alignments[i % #alignments + 1]
-        break
-      end
-    end
-    return t.row, t.col
-  end), 'Table: cycle column alignment (none/left/center/right)' },
-
-  { { 'n' }, '<A-t>', new_table, 'Table: insert a new table here' },
 }
 
 -- A markdown *file being edited*, not merely a buffer whose filetype is
@@ -613,8 +544,178 @@ api.nvim_create_autocmd('InsertLeave', {
   end,
 })
 
-vim.api.nvim_create_user_command('TableFormat', function() reformat() end,
-  { desc = 'Reflow the markdown table under the cursor' })
+-- ── Row and column surgery: commands, not keys ──────────────────────────────
+--
+-- These were `<A-h/j/k/l>`, `<A-S-…>`, `<A-d>`, `<A-a>` and `<A-t>` — one
+-- buffer-local chord each. They are commands now, and the reason is how often
+-- they are actually reached for: inserting a column is a thing you do a few
+-- times a document, not a few times a minute, and a chord you use that rarely
+-- is one you look up anyway. `:Table<Tab>` lists the lot, the names say what
+-- they do, and five Alt chords go back to whatever else wants them. The keys
+-- that are pressed constantly — <Tab>, <S-Tab>, <CR> and the arrows — stay
+-- keys.
+--
+-- Every one takes an optional direction, so the common case is a bare command:
+-- `:TableColumnCreate` adds to the right, `:TableRowCreate` adds below.
+-- <Tab> completes the words.
+local function complete_from(words)
+  return function(lead)
+    return vim.tbl_filter(function(w) return vim.startswith(w, lead) end, words)
+  end
+end
+
+local directions = { 'right', 'left' }
+local vertical = { 'below', 'above' }
+
+local table_commands = {
+  {
+    'TableFormat', nil,
+    'Reflow the markdown table under the cursor',
+    function() reformat() end,
+  },
+
+  {
+    'TableCreate', nil,
+    'Insert a fresh 2x2 markdown table here',
+    function() new_table() end,
+  },
+
+  {
+    'TableColumnCreate', directions,
+    'Insert a column right (default) or left of the cursor',
+    function(where)
+      return op(function(t)
+        local at = where == 'left' and t.col or t.col + 1
+        insert_column(t, at)
+        return t.row, at
+      end)()
+    end,
+  },
+
+  {
+    'TableColumnDelete', nil,
+    'Delete the column under the cursor',
+    function()
+      return op(function(t)
+        -- A table with one column left is a list; deleting it would leave a
+        -- row of bare pipes rather than nothing, so it is refused.
+        if t.ncols < 2 then
+          vim.notify('Table: the last column cannot be deleted', vim.log.levels.WARN)
+          return t.row, t.col
+        end
+        for _, row in ipairs(t.rows) do table.remove(row, t.col) end
+        table.remove(t.aligns, t.col)
+        t.ncols = t.ncols - 1
+        return t.row, math.min(t.col, t.ncols)
+      end)()
+    end,
+  },
+
+  {
+    'TableColumnMove', directions,
+    'Swap this column with the one to its right (default) or left',
+    function(where)
+      return op(function(t)
+        local to = where == 'left' and t.col - 1 or t.col + 1
+        if to < 1 or to > t.ncols then return t.row, t.col end
+        for _, row in ipairs(t.rows) do row[t.col], row[to] = row[to], row[t.col] end
+        t.aligns[t.col], t.aligns[to] = t.aligns[to], t.aligns[t.col]
+        return t.row, to
+      end)()
+    end,
+  },
+
+  {
+    'TableRowCreate', vertical,
+    'Insert a row below (default) or above the cursor',
+    function(where)
+      return op(function(t)
+        -- Never above the `---` row: a row inserted there would be read as the
+        -- header on the next parse.
+        local at = where == 'above' and math.max(t.row, t.delim + 1)
+          or math.max(t.row + 1, t.delim + 1)
+        table.insert(t.rows, at, blank_row(t))
+        return at, 1
+      end)()
+    end,
+  },
+
+  {
+    'TableRowDelete', nil,
+    'Delete the row under the cursor',
+    function()
+      return op(function(t)
+        -- The header and the `---` row are the table's shape, not its content.
+        if t.row <= t.delim then
+          vim.notify('Table: the header row cannot be deleted', vim.log.levels.WARN)
+          return t.row, t.col
+        end
+        table.remove(t.rows, t.row)
+        if #t.rows <= t.delim then table.insert(t.rows, blank_row(t)) end
+        return math.min(t.row, #t.rows), t.col
+      end)()
+    end,
+  },
+
+  {
+    'TableRowMove', vertical,
+    'Swap this row with the one below it (default) or above',
+    function(where)
+      return op(function(t)
+        local to = where == 'above' and t.row - 1 or t.row + 1
+        if to <= t.delim or to > #t.rows then return t.row, t.col end
+        t.rows[t.row], t.rows[to] = t.rows[to], t.rows[t.row]
+        return to, t.col
+      end)()
+    end,
+  },
+
+  {
+    'TableAlign', alignments,
+    'Set this column\'s alignment, or cycle it with no argument',
+    function(align)
+      return op(function(t)
+        if align then
+          t.aligns[t.col] = align ~= 'none' and align or nil
+          return t.row, t.col
+        end
+        local current = t.aligns[t.col] or 'none'
+        for i, name in ipairs(alignments) do
+          if name == current then
+            local next_name = alignments[i % #alignments + 1]
+            t.aligns[t.col] = next_name ~= 'none' and next_name or nil
+            break
+          end
+        end
+        return t.row, t.col
+      end)()
+    end,
+  },
+}
+
+for _, spec in ipairs(table_commands) do
+  local name, words, desc, run = spec[1], spec[2], spec[3], spec[4]
+  api.nvim_create_user_command(name, function(cmd)
+    local arg = cmd.args ~= '' and cmd.args or nil
+    if arg and words and not vim.tbl_contains(words, arg) then
+      vim.notify(('%s: expected one of %s'):format(name, table.concat(words, ', ')),
+        vim.log.levels.ERROR)
+      return
+    end
+    -- Global commands, buffer-local effect: everything but :TableCreate is a
+    -- no-op off a table anyway (parse() answers nil), but a new table written
+    -- into a lua file is not, so the filetype is checked once here.
+    if not editable_markdown(api.nvim_get_current_buf()) then
+      vim.notify(name .. ': not a markdown buffer', vim.log.levels.WARN)
+      return
+    end
+    run(arg)
+  end, {
+    desc = 'Table: ' .. desc,
+    nargs = words and '?' or 0,
+    complete = words and complete_from(words) or nil,
+  })
+end
 
 -- ── The current cell's column header, as virtual text ───────────────────────
 --
