@@ -308,8 +308,11 @@ The cost is that markdown *highlighting* still goes flat over a table with an
 empty row — same parser — and comes back once the row has content.
 
 **The column header of the cell the cursor is in is drawn right after that
-cell's text** — `12 (age)` — muted (`MarkdownTableHeaderHint` in
-`after/plugin/colors.lua`). It is the markdown answer to what csvview.nvim's sticky header and
+cell's text**, muted, and **the cell's own text is picked out in gold** —
+`12 age`, where `12` is gold and `age` is muted. Both groups
+(`MarkdownTableHeaderHint`, `MarkdownTableCurrentCell`) are in
+`after/plugin/colors.lua`, and the colour split is what separates value from
+label now that nothing brackets the label. It is the markdown answer to what csvview.nvim's sticky header and
 `after/plugin/csvview.lua`'s hover float do for csv/tsv: a table wide or long
 enough to scroll its header row off the window leaves the cell you are typing
 in as a bare string with nothing saying what it is a value of.
@@ -323,9 +326,7 @@ redraws it regardless. It is `inline`, not `eol`, because the label belongs to
 one cell rather than to the row — **and inline virtual text pushes the rest of
 the row right**, so the borders past the cursor stop lining up with the rows
 above and below while the label is up, and snap back when the cursor leaves.
-That jostling is accepted on purpose; it is also why the label is short and
-parenthesised, so it reads as an annotation on the value rather than as more
-table. Nothing is shown on the header row, on the `---` row, in a table with no
+That jostling is accepted on purpose. Nothing is shown on the header row, on the `---` row, in a table with no
 delimiter row yet, or for an empty header cell; `:TableHeaderHint` toggles it.
 
 `<Tab>`, `<S-Tab>` and `<CR>` are nvim-cmp's keys and a buffer-local map
