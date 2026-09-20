@@ -120,6 +120,32 @@ local function cell_index(line, col, count)
   return math.min(math.max(n, 1), count)
 end
 
+-- Where cell `col`'s *text* sits on this line, as 0-based byte columns
+-- [start, stop) — the cell's own content, without the padding the reflow put
+-- around it. It is what the label and the highlight are hung on, and what the
+-- arrow keys put the cursor on. An empty cell is a zero-width range one space
+-- in from its `|`: nothing to colour, and a label that is not welded to the
+-- border.
+--
+-- Read off the line text rather than off flush()'s width table, so it is
+-- correct on a table that has not been reflowed.
+local function cell_text_range(line, col)
+  local pipes, i = {}, 1
+  while true do
+    local at = line:find('|', i, true)
+    if not at then break end
+    if line:sub(at - 1, at - 1) ~= '\\' then pipes[#pipes + 1] = at end
+    i = at + 1
+  end
+  local from = (pipes[col] or 0) + 1
+  local to = (pipes[col + 1] or #line + 1) - 1
+  local cell = line:sub(from, to)
+  local lead = #cell:match('^%s*')
+  local text = cell:gsub('%s+$', '')
+  if #text == 0 then return from, from end
+  return from - 1 + lead, from - 1 + #text
+end
+
 -- The table around the cursor: the run of consecutive lines starting with `|`
 -- that the cursor line is part of. nil when the cursor is not on such a line.
 -- A single header line with no delimiter row under it counts — that is the
@@ -368,6 +394,64 @@ end
 
 local alignments = { 'none', 'left', 'center', 'right' }
 
+-- The arrow keys walk the table one *cell* at a time, and wrap.
+--
+-- <Right> from the last cell of a row lands on the first cell of the next one,
+-- and from the very last cell of the table on its very first; <Down> from the
+-- bottom row lands on the top of the column to the right, and from the bottom
+-- of the last column on the top of the first. <Left> and <Up> are the mirror
+-- of each. The `| --- |` row is not a cell anyone edits, so it is stepped over
+-- rather than landed on.
+--
+-- This is navigation and nothing else: unlike <Tab>, an arrow never creates a
+-- column or a row and never rewrites the table, so it cannot mark the buffer
+-- modified just by moving through it. That is also why it does not use
+-- goto_cell(), which walks flush()'s width table and is therefore only right
+-- after a reflow — the cursor is put on the target cell's text as the line
+-- actually reads.
+local function move_cell(drow, dcol)
+  local t = parse()
+  if not t then return false end
+
+  -- The rows that hold cells, in order, with the delimiter row left out.
+  local nav, at = {}, 1
+  for i = 1, #t.rows do
+    if i ~= t.delim then nav[#nav + 1] = i end
+  end
+  for i, row in ipairs(nav) do
+    if row == t.row then
+      at = i
+      break
+    end
+  end
+  if #nav == 0 then return false end
+
+  local col = t.col
+  if dcol ~= 0 then
+    col = col + dcol
+    if col > t.ncols then
+      col, at = 1, at + 1
+    elseif col < 1 then
+      col, at = t.ncols, at - 1
+    end
+    if at > #nav then at = 1 elseif at < 1 then at = #nav end
+  else
+    at = at + drow
+    if at > #nav then
+      at, col = 1, col + 1
+      if col > t.ncols then col = 1 end
+    elseif at < 1 then
+      at, col = #nav, col - 1
+      if col < 1 then col = t.ncols end
+    end
+  end
+
+  local lnum = t.first + nav[at] - 1
+  local from = cell_text_range(get_line(lnum), col)
+  api.nvim_win_set_cursor(0, { lnum, from })
+  return true
+end
+
 local table_filetypes = { markdown = true, mdx = true }
 
 local table_maps = {
@@ -380,6 +464,24 @@ local table_maps = {
     if cmp_handled('prev') then return end
     if not prev_cell() then feed('<S-Tab>') end
   end, 'Table: previous cell' },
+
+  { { 'i', 'n' }, '<Right>', function()
+    if not move_cell(0, 1) then feed('<Right>') end
+  end, 'Table: cell to the right, wrapping to the next row' },
+
+  { { 'i', 'n' }, '<Left>', function()
+    if not move_cell(0, -1) then feed('<Left>') end
+  end, 'Table: cell to the left, wrapping to the previous row' },
+
+  { { 'i', 'n' }, '<Down>', function()
+    if cmp_handled('next') then return end
+    if not move_cell(1, 0) then feed('<Down>') end
+  end, 'Table: cell below, wrapping to the top of the next column' },
+
+  { { 'i', 'n' }, '<Up>', function()
+    if cmp_handled('prev') then return end
+    if not move_cell(-1, 0) then feed('<Up>') end
+  end, 'Table: cell above, wrapping to the bottom of the previous column' },
 
   { { 'i' }, '<CR>', function()
     if cmp_handled('confirm') then return end
@@ -516,66 +618,16 @@ vim.api.nvim_create_user_command('TableFormat', function() reformat() end,
 
 -- ── The current cell's column header, as virtual text ───────────────────────
 --
--- A wide table scrolls its header row off the top of the window, and then the
--- cell you are typing in is a bare string with no idea what it is a value of.
--- csvview.nvim answers that for csv/tsv with a sticky header plus a hover
--- float (after/plugin/csvview.lua); this is the markdown equivalent, minus the
--- float: the header of the column the cursor is in, drawn muted right after
--- the cell's own text, with the cell's own text picked out in gold — `12 age`.
---
--- It is an **extmark**, so it is virtual text in the strict sense — not in the
--- buffer, not in the file, not selectable, not yanked, invisible to `$`, to
--- the formatter and to every other line-text reader in this file. That is why
--- it can sit on a line this module rewrites on every keystroke without any
--- coordination between the two: flush() replaces the line and nvim moves the
--- mark, and the next cursor move redraws it anyway.
---
--- `inline` rather than `eol`: the label belongs to one cell, so it is drawn
--- in that cell rather than at the far end of a row of five. The cost is that
--- inline virtual text *pushes the rest of the row right* — the cell borders
--- past the cursor no longer line up with the rows above and below while the
--- label is up, and they snap back the moment the cursor leaves. That is a
--- deliberate trade, and the reason the label is kept to one word where the
--- header is one word: it has to read as an annotation on the value, not as
--- more table. Nothing brackets it — the colour split does that job, which is
--- what the second extmark over the cell's text is for.
-local hint_ns = api.nvim_create_namespace('markdown_table_header_hint')
-local hint_enabled = true
-
--- Long headers are labels, not content — a 60-column one past the end of a
--- table is noise, and the first few words identify the column anyway.
-local MAX_HINT = 40
-
-local function clear_hint(buf)
-  api.nvim_buf_clear_namespace(buf, hint_ns, 0, -1)
-end
-
--- Where cell `col`'s *text* sits on this line, as 0-based byte columns
--- [start, stop) — the cell's own content, without the padding the reflow put
--- around it, so the label sits against the value and the highlight covers the
--- value only. An empty cell is a zero-width range one space in from its `|`:
--- nothing to colour, and the label does not end up welded to the border.
-local function cell_text_range(line, col)
-  local pipes, i = {}, 1
-  while true do
-    local at = line:find('|', i, true)
-    if not at then break end
-    if line:sub(at - 1, at - 1) ~= '\\' then pipes[#pipes + 1] = at end
-    i = at + 1
-  end
-  local from = (pipes[col] or 0) + 1
-  local to = (pipes[col + 1] or #line + 1) - 1
-  local cell = line:sub(from, to)
-  local lead = #cell:match('^%s*')
-  local text = cell:gsub('%s+$', '')
-  if #text == 0 then return from, from end
-  return from - 1 + lead, from - 1 + #text
-end
+-- The look, the drawing and the `:TableHeaderHint` switch live in
+-- lua/shared/table_cell_hint.lua, shared with csv/tsv
+-- (after/plugin/csvview.lua). What is markdown's own is only finding the cell:
+-- the header that names it, and where its text sits on the line.
+local hint = require('shared.table_cell_hint')
 
 local function update_hint()
   local buf = api.nvim_get_current_buf()
-  clear_hint(buf)
-  if not hint_enabled or not editable_markdown(buf) then return end
+  hint.clear(buf)
+  if not editable_markdown(buf) then return end
 
   -- parse() bails on the cheap `^%s*|` test before it scans for fences, so the
   -- cost of this on a CursorMoved is one line read outside a table.
@@ -585,44 +637,23 @@ local function update_hint()
   -- repeat the cell the cursor is already sitting in.
   if not t or not t.delim or t.row <= t.delim then return end
 
-  local header = t.rows[t.delim - 1][t.col]
-  if not header or header == '' then return end
-  if strwidth(header) > MAX_HINT then
-    header = vim.fn.strcharpart(header, 0, MAX_HINT - 1) .. '…'
-  end
-
   local lnum = t.first + t.row - 1
   local from, to = cell_text_range(get_line(lnum), t.col)
-
-  -- The value itself, picked out so the eye can tell it from the label that
-  -- follows it now that there are no brackets around the label.
-  if to > from then
-    api.nvim_buf_set_extmark(buf, hint_ns, lnum - 1, from, {
-      end_col = to,
-      hl_group = 'MarkdownTableCurrentCell',
-    })
-  end
-
-  api.nvim_buf_set_extmark(buf, hint_ns, lnum - 1, to, {
-    virt_text = { { ' ' .. header, 'MarkdownTableHeaderHint' } },
-    virt_text_pos = 'inline',
-    hl_mode = 'combine',
-  })
+  hint.show(buf, lnum - 1, from, to, t.rows[t.delim - 1][t.col])
 end
 
+hint.register(update_hint)
+
 api.nvim_create_autocmd({ 'CursorMoved', 'CursorMovedI', 'InsertLeave' }, {
-  callback = update_hint,
+  callback = function() update_hint() end,
 })
 
--- The mark is buffer-local but the cursor is not: leaving the buffer or the
+-- The marks are buffer-local but the cursor is not: leaving the buffer or the
 -- window would otherwise leave a stale label behind on the row the cursor used
 -- to be on.
 api.nvim_create_autocmd({ 'BufLeave', 'WinLeave' }, {
-  callback = function(args) clear_hint(args.buf) end,
+  callback = function(args) hint.clear(args.buf) end,
 })
 
-api.nvim_create_user_command('TableHeaderHint', function()
-  hint_enabled = not hint_enabled
-  update_hint()
-  vim.notify('Markdown table header hint ' .. (hint_enabled and 'on' or 'off'))
-end, { desc = "Toggle the column-header label on the cursor's table cell" })
+api.nvim_create_user_command('TableHeaderHint', hint.toggle,
+  { desc = "Toggle the column-header label on the cursor's table cell (markdown and csv)" })

@@ -227,8 +227,8 @@ require("lazy").setup({
         dependencies = { 'nvim-lua/plenary.nvim' },
     },
 
-    -- CSV/TSV viewer: column alignment + sticky header, plus a hover
-    -- tooltip for column names, see after/plugin/csvview.lua
+    -- CSV/TSV viewer: column alignment + sticky header, plus the cell hint
+    -- and cell-wise arrow keys, see after/plugin/csvview.lua
     {
         'hat0uma/csvview.nvim',
         ft = { 'csv', 'tsv' },

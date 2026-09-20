@@ -29,6 +29,7 @@ lua/shared/
   yank_store.lua            — the yank history: an append-only JSON-lines log
   markdown_format.lua       — markdown -> one canonical shape (:MarkdownFormat)
   nvfuzzy.lua               — the editor half of the shell's `nv <pattern>`
+  table_cell_hint.lua       — the label+highlight on the cell under the cursor
   open_under_cursor.lua     — <CR> on a path/URL: nvim, Firefox or Explorer
   excalidraw_style.lua      — loads excalidraw-style.json
   lazy.lua                  — plugin definitions (lazy.nvim)
@@ -46,6 +47,7 @@ after/plugin/
   markdown_excalidraw.lua   — :ExportToExcalidraw (whole document → canvas)
   excalidraw_render.lua     — :ExcalidrawRender (```mermaid blocks only)
   markdown_table.lua        — Obsidian-style table editing (<Tab>/<CR> grow the table)
+  csvview.lua               — csv/tsv: csvview.nvim + the same cell hint and arrows
   colors.lua                — colorscheme (rose-pine) + all custom highlight groups (Search, terminal visual, NetrwDotfile, etc.)
   conform.lua               — formatter config
   harpoon.lua               — harpoon2 config
@@ -309,48 +311,65 @@ empty row — same parser — and comes back once the row has content.
 
 **The column header of the cell the cursor is in is drawn right after that
 cell's text**, muted, and **the cell's own text is picked out in gold** —
-`12 age`, where `12` is gold and `age` is muted. Both groups
-(`MarkdownTableHeaderHint`, `MarkdownTableCurrentCell`) are in
-`after/plugin/colors.lua`, and the colour split is what separates value from
-label now that nothing brackets the label. It is the markdown answer to what csvview.nvim's sticky header and
-`after/plugin/csvview.lua`'s hover float do for csv/tsv: a table wide or long
-enough to scroll its header row off the window leaves the cell you are typing
-in as a bare string with nothing saying what it is a value of.
-
-It is an **extmark**, so it is virtual text in the strict sense — not in the
-buffer, not in the file, not selectable, not yanked, invisible to `$` and to
-every line-text reader in this module. That is what lets it sit on a line the
-table code rewrites on every keystroke with no coordination between the two:
-`flush()` replaces the line, nvim moves the mark, and the next cursor move
-redraws it regardless. It is `inline`, not `eol`, because the label belongs to
+`12 age`, where `12` is gold and `age` is muted. There are no brackets around
+the label: the colour split is what separates value from annotation. Both are
+extmarks, so this is virtual text in the strict sense — not in the buffer, not
+in the file, not selectable, not yanked, invisible to `$`, to the formatter and
+to every line-text reader in this module. That is what lets the label sit on a
+line the table code rewrites on every keystroke with no coordination between
+the two: `flush()` replaces the line, nvim moves the mark, and the next cursor
+move redraws it regardless. It is `inline`, not `eol`, because it belongs to
 one cell rather than to the row — **and inline virtual text pushes the rest of
 the row right**, so the borders past the cursor stop lining up with the rows
 above and below while the label is up, and snap back when the cursor leaves.
-That jostling is accepted on purpose. Nothing is shown on the header row, on the `---` row, in a table with no
-delimiter row yet, or for an empty header cell; `:TableHeaderHint` toggles it.
+That jostling is accepted on purpose. Nothing is shown on the header row, on
+the `---` row, in a table with no delimiter row yet, or for an empty header
+cell; `:TableHeaderHint` toggles it.
 
-`<Tab>`, `<S-Tab>` and `<CR>` are nvim-cmp's keys and a buffer-local map
-shadows a global one, so each handler hands the key back to cmp when the
-completion menu is open, mirroring `after/plugin/cmp.lua` (including that
-`<CR>` confirms only an explicitly selected entry).
+**The drawing, the look and the switch live in
+`lua/shared/table_cell_hint.lua`**, not here, because csv/tsv gets the same
+thing (see below) and it is one feature wearing two filetypes. What each side
+owns is only finding the cell: its text's byte range on the line, and the
+header that names it.
 
-**Because these three keys are contested, the attach conditions are narrower
-than "filetype is markdown", and both narrowings are load-bearing:**
+**The arrow keys walk the table one cell at a time, and wrap.** `<Right>` from
+the last cell of a row lands on the first cell of the next, and from the very
+last cell of the table on its very first; `<Down>` from the bottom row lands on
+the top of the column to the right, and from the bottom of the last column on
+the top of the first. `<Left>` and `<Up>` mirror each. The `| --- |` row is not
+a cell anyone edits, so it is stepped over rather than landed on.
 
-- A markdown *file being edited* — `buftype == ''` and `modifiable`. An LSP
-  hover float, a telescope preview and plugin scratch windows are all
-  `filetype=markdown` on a `nofile` buffer, and none of them wants `<Tab>` and
-  `<CR>` rewired.
-- `b:markdown_table_off` opts a buffer out even when it is all of the above.
-  `:GitReview`'s document is an editable markdown file that sets it, because
-  `<CR>` there opens the diff line under the cursor and that is worth more than
-  table editing.
-- Only maps this file actually set are removed again, tracked by the
-  `b:markdown_table_maps` flag. The autocmd matches `FileType *` (like
-  `markdown_edit.lua`, so a buffer whose filetype changes *away* from markdown
-  gets the keys back), but a blind `keymap.del` in that branch would delete
-  some *other* plugin's buffer-local `<Tab>`/`<CR>` — telescope's picker keys,
-  for one — in any buffer that sets its filetype after its mappings.
+This is navigation and nothing else: unlike `<Tab>`, an arrow **never creates a
+column or a row and never rewrites the table**, so moving through a table
+cannot mark the buffer modified. That is also why it does not use `goto_cell()`
+— that walks `flush()`'s width table and is only right after a reflow, while
+`cell_text_range()` reads the line as it actually is, so the arrows work in a
+table nothing has aligned yet. `<Up>`/`<Down>` hand the key back to nvim-cmp
+when the completion menu is open, like `<Tab>` and `<CR>` do.
+
+## csv and tsv (`after/plugin/csvview.lua`)
+
+csvview.nvim is auto-enabled for every csv/tsv buffer — column alignment and
+the sticky header are its own — and this file adds the two things the markdown
+tables have: **the same cell hint** (`lua/shared/table_cell_hint.lua`, so both
+filetypes look alike and `:TableHeaderHint` switches both) and **the same
+cell-wise wrapping arrow keys**.
+
+- **The hover float is gone.** There was one here before: the column name in a
+  popup raised on `CursorHold`. It covered the rows under the cursor, it
+  arrived on the `updatetime` timer rather than when you moved, and it had to
+  be closed again on every cursor move — worse than nothing on a wide file. The
+  inline label is the same answer drawn in the cell, with no window.
+- **csvview's own `jump.field` is used for the move, not for the decision.** It
+  already wraps horizontally (its `col_wrap`), but it stops dead at both ends
+  of the file and has no vertical wrap at all, so the destination is worked out
+  here — off `row_count_logical()` and the per-row field count — and jumped to
+  absolutely.
+- Everything reaches for the plugin from inside a callback and never at
+  startup, since it is lazy-loaded on `ft=csv/tsv`. A field spanning physical
+  lines (a quoted newline) has no single range to hang the pair on, so it goes
+  without; the header row gets no label, for the same reason the markdown
+  header row does not.
 
 ## markdown editing keymaps (ported from Obsidian)
 
