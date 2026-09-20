@@ -735,3 +735,73 @@ do
     end,
   })
 end
+
+-- zj / zk — move down/up and recentre, as `jzz` / `kzz` would, and then stay
+-- in a one-key submode: **bare j / k keep scrolling recentred** until you
+-- press anything else, which exits and is executed normally. `<Down>`/`<Up>`
+-- work too; `<Esc>` leaves quietly.
+--
+-- The ask was to *hold* z and tap j/k, the way ctrl is held. A terminal
+-- cannot deliver that: `z` is not a modifier, so holding it sends a repeating
+-- stream of `z` characters and nvim sees `zzzzzj`, not "z is down". (The
+-- kitty protocol this stack speaks does report key-up for modifiers, which is
+-- what makes `<C-S-w>` work in this file — but not for ordinary letters.) A
+-- sticky submode is the same ergonomics without the impossible part: one
+-- `zj` to enter, then j/k as long as you like.
+--
+-- It is a blocking `getcharstr` loop rather than a set of temporary j/k
+-- mappings, which is the other way to write this. Mappings would have to be
+-- created and torn down around every exit path — an error, a mode change, a
+-- <C-c> — and the teardown would delete j/k maps that were never ours if
+-- anything else mapped them in between. The loop owns its own lifetime: when
+-- it returns, there is nothing to clean up.
+--
+-- This displaces the builtin `zj`/`zk` fold motions (to the start of the next
+-- fold / the end of the previous one). They are kept on `zJ`/`zK`, which were
+-- unused.
+do
+  local DOWN = vim.keycode('<Down>')
+  local UP = vim.keycode('<Up>')
+  local ESC = vim.keycode('<Esc>')
+
+  local function step(key, count)
+    -- `normal!` and not feedkeys: this has to finish before the next
+    -- getcharstr, or the loop would read ahead of a cursor that has not moved.
+    pcall(vim.cmd, 'normal! ' .. count .. key .. 'zz')
+  end
+
+  local function sticky(key)
+    return function()
+      step(key, vim.v.count1)
+      while true do
+        vim.cmd('redraw')
+        local ok, ch = pcall(vim.fn.getcharstr)
+        if not ok or ch == '' or ch == ESC then
+          return
+        end
+        if ch == 'j' or ch == DOWN then
+          step('j', 1)
+        elseif ch == 'k' or ch == UP then
+          step('k', 1)
+        else
+          -- Not ours: hand it back as if it had just been typed, mappings and
+          -- all, so the submode costs nothing to leave.
+          vim.api.nvim_feedkeys(ch, 'mt', false)
+          return
+        end
+      end
+    end
+  end
+
+  vim.keymap.set('n', 'zj', sticky('j'), { desc = 'Down + recentre, then j/k keep scrolling' })
+  vim.keymap.set('n', 'zk', sticky('k'), { desc = 'Up + recentre, then j/k keep scrolling' })
+
+  -- the builtin fold motions this took the keys from
+  vim.keymap.set({ 'n', 'x' }, 'zJ', 'zj', { desc = 'Start of the next fold (builtin zj)' })
+  vim.keymap.set({ 'n', 'x' }, 'zK', 'zk', { desc = 'End of the previous fold (builtin zk)' })
+
+  -- Visual mode gets the plain recentring move: a blocking loop inside a
+  -- selection would swallow the keys that extend it.
+  vim.keymap.set('x', 'zj', 'jzz', { desc = 'Down + recentre' })
+  vim.keymap.set('x', 'zk', 'kzz', { desc = 'Up + recentre' })
+end

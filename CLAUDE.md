@@ -27,6 +27,7 @@ lua/shared/
   init.lua                  — loads remap, set, packer, wt_colors
   md_document.lua           — markdown → typed blocks + treesitter code tokens
   yank_store.lua            — the yank history: an append-only JSON-lines log
+  markdown_format.lua       — markdown -> one canonical shape (:MarkdownFormat)
   nvfuzzy.lua               — the editor half of the shell's `nv <pattern>`
   open_under_cursor.lua     — <CR> on a path/URL: nvim, Firefox or Explorer
   excalidraw_style.lua      — loads excalidraw-style.json
@@ -41,6 +42,7 @@ after/plugin/
   yanks.lua                 — :Yanks / <C-p>, the yank history as a buffer
   git_review.lua            — :GitReview, the branch's commits+diffs as markdown
   markdown_convert.lua      — :ConvertToPdf/:ConvertToTex/:ConvertToWord via mdpdf
+  markdown_format.lua       — :MarkdownFormat, the aggressive reformatter
   markdown_excalidraw.lua   — :ExportToExcalidraw (whole document → canvas)
   excalidraw_render.lua     — :ExcalidrawRender (```mermaid blocks only)
   markdown_table.lua        — Obsidian-style table editing (<Tab>/<CR> grow the table)
@@ -198,6 +200,85 @@ Things worth knowing:
   disappearing.
 - The buffer is exported, not the file on disk — unlike mdpdf, nothing re-reads
   the file, so there is no forced write first.
+
+## markdown formatting (`:MarkdownFormat`)
+
+`lua/shared/markdown_format.lua` reformats a markdown document into one
+canonical shape; `after/plugin/markdown_format.lua` is the command around it
+(`:MarkdownFormat`, a range or `<leader>m=` for a selection, `!` to override
+an opted-out buffer).
+
+**The headline rule is that prose is never wrapped** — a paragraph, a list
+item, a quoted line is one line, however long. Hard-wrapped prose is what a
+generated document arrives with, and it breaks the thing these files are used
+for most: `/\.*cache` finds a phrase only when the phrase is on one line.
+`wrap` already draws it wrapped, so a newline in the file is a second,
+usually false, claim about the text.
+
+The rest is the black-y part: one blank line between blocks and after every
+heading and never two; setext (`===`/`---`) headings become `#`/`##`; `*` and
+`+` bullets become `-`; ordered lists renumber 1..n per list and per nesting
+level; nesting is re-indented to the parent's content column; tables are
+padded even with their alignment colons kept; `***`/`___` rules become `---`;
+trailing whitespace goes.
+
+Left alone, because the bytes are the content: fenced and indented code
+blocks, YAML front matter, raw HTML, link reference definitions, and the
+mdpdf directives (`/comment`, `/ignore`, `/title`, …) — each of those keeps
+its own line and is never swallowed into the paragraph beneath it, which
+would silently turn that paragraph into a comment and drop it from the
+export.
+
+Things worth knowing:
+
+- **It is a command, not a formatter in `conform.lua`.** Unwrapping a
+  document is a large edit in one direction; it should happen when you ask.
+  prettier still runs on `:w` and leaves this output alone, because its
+  `proseWrap` default is `preserve` — it keeps whatever wrapping it finds,
+  in either direction, so the long lines survive. The two agree on blank
+  lines, bullets, numbering and table padding, verified by diffing this
+  file's own output against prettier's. They differ in exactly one place:
+  prettier also rewrites `*emphasis*` to `_emphasis_`, so the first save
+  after a format shows that one extra change. **Inline rewriting is left to
+  prettier on purpose** — doing it safely needs a real inline parser (code
+  spans, escapes, intra-word underscores), and there is already one in the
+  pipeline doing it right.
+- **`b:no_autoformat` opts a buffer out**, and `:MarkdownFormat!` overrides
+  that. It is the same flag `conform.lua` honours, and the buffer that needs
+  it is `:GitReview`'s: that document is parsed back on the next render to
+  recover the review checkboxes and the `//` comments under each diff, and
+  reflowing it loses them.
+- **Two trailing spaces are kept, as exactly two.** A hard line break is the
+  one piece of markdown whose entire meaning is trailing whitespace, and
+  stripping it is what made the first cut non-idempotent: the break survived
+  pass one, and pass two then joined the two lines because the thing marking
+  them separate had been rubbed out. A trailing `\` break is kept too.
+- **A list item's content is formatted *tight*** — a blank line between two
+  blocks inside an item is emitted only where the source had one, unlike
+  everywhere else, where one is forced. `- a` / `  - b` is a tight list;
+  inserting a blank there makes the *outer* list loose and every item of it
+  grows a `<p>`. This is the one place the "always one blank line" rule is
+  wrong, because there the blank line is not cosmetic.
+- **A list ends when its marker kind changes.** A bullet list followed by an
+  ordered one is two lists, and so is `1.` followed by `1)`; without that the
+  renumbering runs straight out of one list into the next (it did — the first
+  version turned a `1. 2. 3.` list under a bullet list into `4. 5. 6.`).
+  Switching between `*`, `+` and `-` is *not* a boundary, since all three
+  normalise to `-`.
+- **The cursor is kept on the same text, not the same line number**, by
+  counting non-whitespace characters before it and walking that far into the
+  result. Unwrapping moves every line in the document, so a line number does
+  not survive the edit; the character sequence does, which is precisely what
+  reflowing leaves alone.
+- `---` directly under a paragraph is a **setext h2**, not a rule, and comes
+  out as `## …`. That is CommonMark, and the only reading that keeps the
+  rendering unchanged. Four-space indentation at the start of a block is an
+  indented **code block** even when it looks like a list, for the same
+  reason.
+- `M.format(lines) -> lines` is pure — no buffer, no cursor, no vim state
+  beyond `strdisplaywidth` — which is what makes it testable from a headless
+  nvim without opening anything:
+  `nvim --headless -u NONE -c 'set rtp+=~/.config/nvim' -c 'lua ...'`.
 
 ## markdown tables (ported from Obsidian)
 
@@ -691,6 +772,38 @@ neither problem and works under every foldmethod.
 Watch out when testing this by hand or in a script: **`j` counts a closed fold
 as one line**, so `V13j` over a buffer that already has folds closed selects far
 more than thirteen lines. `V<line>G` is the line-exact way to select a range.
+
+## scrolling with the cursor centred (`zj` / `zk`)
+
+`lua/shared/remap.lua`. `zj` moves down a line and recentres, `zk` up — `jzz`
+and `kzz`, with a count (`5zj`). Then they **stay**: bare `j` and `k` keep
+scrolling recentred until you press anything else, which leaves the submode
+and runs normally. `<Down>`/`<Up>` work in it too, `<Esc>` leaves quietly.
+
+**The ask was to hold `z` and tap j/k, the way ctrl is held, and a terminal
+cannot deliver that.** `z` is not a modifier: holding it sends a repeating
+stream of `z` characters, so nvim sees `zzzzzj` and has no idea the key is
+still down. (This stack *does* speak the kitty keyboard protocol — it is what
+makes `<C-S-w>` work — but that reports key-up for modifiers, not for ordinary
+letters.) The sticky submode is the same ergonomics without the impossible
+part: one `zj` to enter, then j/k as long as you like.
+
+- **It is a blocking `getcharstr` loop, not a pair of temporary `j`/`k`
+  mappings.** Mappings are the other way to write this, and they have to be
+  torn down on every exit path — another key, an error, `<C-c>`, a mode
+  change — where a blind `keymap.del` would remove a `j` or `k` that was
+  never ours if something else mapped them in the meantime. The loop owns its
+  own lifetime: when it returns there is nothing to clean up.
+- The exit key is handed back with `nvim_feedkeys(ch, 'mt')` — remapped and
+  treated as typed — so leaving the submode costs nothing: `:` opens the
+  command line, `G` goes to the end, `<leader>x` still ticks a checkbox.
+- The screen is `redraw`n at the top of each iteration, because nothing else
+  will while the loop holds the main thread.
+- **This displaces the builtin `zj`/`zk` fold motions** (to the start of the
+  next fold, to the end of the previous one). They are kept on `zJ`/`zK`,
+  which were unused.
+- Visual mode gets the plain `jzz`/`kzz` and no submode — a blocking loop
+  inside a selection would swallow the keys that extend it.
 
 ## sticky context (nvim-treesitter-context)
 
