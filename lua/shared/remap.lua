@@ -115,6 +115,19 @@ local function netrw_dir_expanded(path)
   return dict[p] ~= nil or dict[p .. "/"] ~= nil
 end
 
+-- <leader>yg: copy the GitHub link (pinned to HEAD's commit) to the current
+-- file / line / selected span, or in netrw to the file or directory under the
+-- cursor. Errors out outside a GitHub checkout. See lua/shared/github_link.lua.
+local function yank_github_link(path, first, last)
+  local url, note = require("shared.github_link").url(path, first, last)
+  if not url then
+    vim.notify(note, vim.log.levels.ERROR)
+    return
+  end
+  vim.fn.system("clip.exe", url)
+  vim.notify("Copied: " .. url .. (note and ("\n(" .. note .. ")") or ""), note and vim.log.levels.WARN or vim.log.levels.INFO)
+end
+
 -- netrw keymaps
 vim.api.nvim_create_autocmd("FileType", {
   pattern = "netrw",
@@ -158,6 +171,11 @@ vim.api.nvim_create_autocmd("FileType", {
       vim.fn.system("clip.exe", path)
       vim.notify("Copied: " .. path)
     end, { buffer = true })
+
+    -- <leader>yg: GitHub link to the file/directory under the cursor.
+    vim.keymap.set("n", "<leader>yg", function()
+      yank_github_link(netrw_cursor_path())
+    end, { buffer = true, desc = "netrw: copy GitHub link to file/dir under cursor" })
 
     -- !: run a shell command on the file under cursor.
     -- % in the command is replaced with the full path of the cursor file.
@@ -326,6 +344,17 @@ vim.keymap.set("v", "<leader>yl", function()
   local suffix = start_line == end_line and tostring(start_line) or (start_line .. "-" .. end_line)
   yank_path_with_lines(path .. ":" .. suffix)
 end, { desc = "Copy current file path with selected line range to clipboard" })
+
+vim.keymap.set("n", "<leader>yg", function()
+  yank_github_link(vim.fn.expand("%:p"), vim.fn.line("."))
+end, { desc = "Copy GitHub link to current line" })
+
+vim.keymap.set("v", "<leader>yg", function()
+  local a, b = vim.fn.line("v"), vim.fn.line(".")
+  if a > b then a, b = b, a end
+  vim.cmd("normal! \27") -- exit visual mode
+  yank_github_link(vim.fn.expand("%:p"), a, b)
+end, { desc = "Copy GitHub link to selected lines" })
 
 -- <leader>ys: copy the treesitter path down to the symbol under the cursor,
 --   body/div/span#main/div/p:hello

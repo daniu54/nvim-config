@@ -31,6 +31,7 @@ lua/shared/
   nvfuzzy.lua               — the editor half of the shell's `nv <pattern>`
   table_cell_hint.lua       — the label+highlight on the cell under the cursor
   open_under_cursor.lua     — <CR> on a path/URL: nvim, Firefox or Explorer
+  github_link.lua           — <leader>yg: GitHub URL (commit-pinned) of a line/span/file/dir
   excalidraw_style.lua      — loads excalidraw-style.json
   lazy.lua                  — plugin definitions (lazy.nvim)
   remap.lua                 — keymaps
@@ -543,6 +544,26 @@ typing". Verified through the real chain, tmux included: tmux forwards mode 2004
 from the pane's application to its client, so the outer nvim sees it. zsh
 honours it too, which also stops it executing every line but the last of a
 multi-line paste. A program that never asked for it (`cat`) still gets raw text.
+
+## GitHub link (`<leader>yg`)
+
+`lua/shared/github_link.lua`, bound next to `<leader>yl` in `lua/shared/remap.lua`
+(normal: this line, visual: the selected span, netrw buffer-local: the file or
+directory under the cursor). Copies `https://github.com/<owner>/<repo>/blob/<sha>/<path>#L10-L20`
+to the Windows clipboard.
+
+- **Pinned to HEAD's commit sha, not a branch.** `blob/main/...#L42` rots when
+  main moves; a sha link never does. Consequence: line numbers are only right if
+  the file matches HEAD, so a dirty file, or an unpushed HEAD (the link would
+  404), still yields a URL but with a warning notification saying why.
+- **A path not in HEAD errors out** (`git cat-file -e <sha>:<path>`) — untracked,
+  ignored or just-created files have no GitHub address. Outside a git repo, or
+  in one whose remote is not github.com, it errors too.
+- **The remote may be an ssh_config alias** (`github_personal:owner/repo.git`
+  here). The host is resolved with `ssh -G`, so no alias names are hardcoded.
+  Remote is the current branch's, else `origin`.
+- Markdown (and rst/adoc/org) get `?plain=1`, otherwise GitHub renders the file
+  and `#L` anchors go nowhere. Directories link to `/tree/<sha>/<path>`.
 
 ## symbol path under the cursor (`<leader>ys`)
 

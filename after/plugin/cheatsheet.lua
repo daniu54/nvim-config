@@ -22,6 +22,7 @@ local lines = {
   "   gx               open URL under cursor in browser          ",
   "   <leader>gf       open path under cursor in new nvim win    ",
   "   <leader>yl       copy path:line (visual: path:start-end)   ",
+  "   <leader>yg       copy GitHub link to line/selection/file/dir",
   "   <leader>ys       copy symbol path under cursor (treesitter)",
   "                    body/div/span#main/p:hello                ",
  " ─────────────────────────────────────────────────────────── ",
